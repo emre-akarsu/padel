@@ -6,8 +6,9 @@ A plain-web, mobile-first PWA (no framework, no build step) for the plan in *Rea
 
 | Screen | What it does |
 |---|---|
-| Shadow swing mirror | Front or rear camera, live skeleton, green ghost coach fitted to your body (hip anchor, torso scale), stage subtitle, wrist trail. |
-| Drill | Rear camera, highest fps the camera gives (asks for 120), live HUD (count, tempo, contact height + target band, phase), a 4 s ring buffer, and an automatic 0.25x replay after each stroke (skeleton, hit-path trail coloured by phase, ghost time-warped to your contact, 0.5 s contact freeze with a height line). Spoken neutral numbers after each stroke. |
+| Use cases (home) | Shadow swing, Ball machine, Hitting gadget, Wall / rebound, Coach lesson (live, each with its own phone setup tips); Match or handheld clip (upload only). A release-gates table shows each check as HIDDEN, NUMBERS or LIVE CUE from `release.json`. |
+| Shadow swing mirror | Front or rear camera, the ideal 3D model drawn **beside** you at your scale (not on top: overlapping bodies were unreadable), stage subtitle, wrist trail. |
+| Drill | Rear camera, highest fps the camera gives (asks for 120), live HUD (count, tempo, contact height + target band, phase), a 4 s ring buffer, and an automatic 0.25x **split replay** after each stroke: YOU (video, hit-path trail coloured by phase, your contact line) next to IDEAL (3D model at your scale, time-warped to your contact). Side by side, or stacked when a landscape clip is shown on a portrait screen. A spoken between-point summary every 6 strokes. Spoken neutral numbers after each stroke. |
 | Review a video | Upload a clip and run `engine.analyzeVideo` on it. You get a stroke table and a replay over the video, and every stroke goes to the inbox. |
 | Session summary | Count, contact-height range, tempo mean ± sd, and each measure against its target band. Export JSON. |
 | Coach Review Inbox | Each stroke shows a contact thumbnail, the suggested shot and engine check drafts. The coach can approve, fix the shot, mark "not a stroke", answer agree/disagree/unsure per check and add a note. Export gives `padel.coach_labels.v1` JSON for the learning loop. Player Agree / Not sure / Wrong taps from replay are saved too. |

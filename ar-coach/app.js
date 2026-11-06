@@ -5,7 +5,7 @@ const LS = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { alert('Phone storage is full: export and clear the inbox.'); } }
 };
-const S = Object.assign({ engine: 'mock', view: 'side', height: 1.8, hand: 'right', voice: '1', remote: '', shot: 'bandeja' }, LS.get('padel.settings', {}));
+const S = Object.assign({ engine: 'onnx', use: 'machine', view: 'side', height: 1.8, hand: 'right', voice: '1', remote: '', shot: 'bandeja' }, LS.get('padel.settings', {}));
 const saveS = () => LS.set('padel.settings', S);
 const PH_COL = { preparation: '#4fc3f7', backswing: '#ab47bc', forward_swing: '#ff9f43', contact: '#d8ea3a', follow_through: '#5fb07a', recovery: '#90a4ae', ready: '#cfd8dc' };
 const PH_NAME = { ready: 'Ready', preparation: 'Preparation', backswing: 'Backswing', forward_swing: 'Forward swing', contact: 'Contact', follow_through: 'Follow-through', recovery: 'Recovery' };
@@ -36,7 +36,15 @@ function show(id) {
   if (id === 'summary') renderSummary(); if (id === 'inbox') renderInbox();
   if (id === 'shadow' || id === 'drill') startLive(id);
 }
-document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (g) show(g.dataset.go); });
+document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (!g) return; if (g.dataset.use) { S.use = g.dataset.use; saveS(); } show(g.dataset.go); });
+const USE_TIPS = {
+  shadow: ['Prop the phone on a bag, shelf or the floor, 2-4 m away.', 'Whole body in frame, side-on to the phone.', 'Swing slowly and watch the ideal model swing beside you.'],
+  machine: ['Clip the phone to the side fence, 5-7 m from your hitting spot, at hip height (1.2-1.5 m).', 'Landscape, main 1x lens (no ultrawide).', 'Same shot every ball. Earbuds on for the spoken numbers.'],
+  gadget: ['Side view, 3-5 m from the gadget, hip height.', 'The ball sits in one place, so contact height is measured best here.', 'Only you in the frame.'],
+  wall: ['Phone behind you, outside the play area, 4-8 m away.', 'Whole body in frame. Replays after each stroke; skip with Close.', 'Only you in the frame.'],
+  lesson: ['Phone on the side fence, 5-7 m away, hip height.', 'The coach can open any replay and answer Agree / Not sure / Wrong.', 'Every coach answer is saved as a training label.'],
+};
+const USE_NAME = { shadow: 'Shadow swing', machine: 'Ball machine', gadget: 'Hitting gadget', wall: 'Wall / rebound', lesson: 'Coach lesson' };
 
 /* ---------- home ---------- */
 function renderHome() {
@@ -46,6 +54,8 @@ function renderHome() {
   const bind = (sel, key) => { const el = $(sel); el.value = S[key]; el.onchange = () => { S[key] = el.value; saveS(); }; };
   bind('#sEngine', 'engine'); bind('#sView', 'view'); bind('#sHeight', 'height'); bind('#sHand', 'hand'); bind('#sVoice', 'voice'); bind('#sRemote', 'remote');
   $('#engName').textContent = S.engine;
+  $('#gates').innerHTML = REL.checks.map(c => { const g = gate(c.id), lvl = g.fault ? ['LIVE CUE', 'ok'] : g.show ? ['NUMBERS', ''] : ['HIDDEN', 'bad'];
+    return `<tr><td>${esc(c.phase || '')}</td><td>${esc(c.label || c.id)}</td><td class="small muted">${c.precisionLB != null ? Math.round(c.precisionLB * 100) + '% · ' : ''}${c.n || 0}/${REL.gates.minN}</td><td><span class="pill ${lvl[1]}">${lvl[0]}</span></td></tr>`; }).join('');
 }
 
 /* ---------- speech ---------- */
@@ -59,10 +69,9 @@ const cam = $('#cam'), ov = $('#ov'), octx = ov.getContext('2d');
 async function startLive(mode) {
   Object.assign(L, { mode, on: true, running: false, busy: false, ring: [], keep: new Set(), strokes: [], trail: [], idx: 0, lastProc: 0, fpsN: 0, fpsT: performance.now(), fps: 0, dropped: 0, faults: 0, sessionId: 'S' + Date.now().toString(36), start: Date.now(), ghostOn: mode === 'shadow', facing: L.facing || (mode === 'shadow' ? 'user' : 'environment'), lastFit: null });
   $('#live').hidden = false; $('#setup').hidden = false; $('#replay').hidden = true; $('#lastReplay').hidden = true;
-  $('#liveTitle').textContent = (mode === 'shadow' ? 'Shadow mirror · ' : 'Drill · ') + shotName(S.shot);
-  const tips = mode === 'shadow'
-    ? ['Prop the phone on a bag, shelf or the floor, 2-4 m away.', 'Whole body in frame, side-on to the phone.', 'Swing slowly and watch the green ghost coach.']
-    : ['Clip the phone to the side fence, 5-7 m from you, at hip height (1.2-1.5 m).', 'Landscape, main 1x lens (no ultrawide).', 'Only you in the frame. Earbuds on for the spoken numbers.'];
+  const use = mode === 'shadow' ? 'shadow' : (USE_TIPS[S.use] && S.use !== 'shadow' ? S.use : 'machine');
+  $('#liveTitle').textContent = USE_NAME[use] + ' · ' + shotName(S.shot);
+  const tips = USE_TIPS[use];
   $('#setupList').innerHTML = tips.map(t => `<li>${t}</li>`).join('') + '<li id="fbStat">Full body: checking...</li>';
   $('#hCount').textContent = '0'; ['#hTempo', '#hHeight', '#hPhase'].forEach(s => $(s).textContent = '-');
   const b = band('contact_low', S.shot); $('#hHeightL').textContent = 'contact m' + (b && gate('contact_low').show ? ` (${b[0]}-${b[1]})` : '');
@@ -124,7 +133,9 @@ function draw(r, t) {
   if (L.ghostOn && L.lastFit && L.mode === 'shadow') {
     const spec = PadelGhost.specs.shots[S.shot], period = spec.durationS * 2 + 1; // half speed + 1 s pause
     let u = r.phase && r.phase.progress != null && r.phase.id !== 'ready' ? r.phase.progress : Math.min(1, ((t % period) / (spec.durationS * 2)));
-    drawGhost(octx, S.shot, u, L.lastFit, s * 2.4);
+    // beside the player, not on top (overlapping bodies were unreadable): shift towards the emptier side of the frame
+    const f = L.lastFit, dir = f.anchor[0] < ov.width / 2 ? 1 : -1;
+    drawGhost(octx, S.shot, u, { ...f, anchor: [f.anchor[0] + dir * f.scale * 2.6, f.anchor[1]] }, s * 2.4);
     const sub = $('#sub'); sub.hidden = false; sub.textContent = 'Coach: ' + PadelGhost.labelAt(S.shot, u);
   } else $('#sub').hidden = true;
 }
@@ -156,6 +167,11 @@ function onStroke(s) {
   L.lastStroke = s; $('#lastReplay').hidden = false;
   addInbox(s, 'live', thumbFromBitmap(frames, s));
   if (L.mode === 'drill') setTimeout(() => openReplay(s, { frames }), 300);
+  if (n % 6 === 0) setTimeout(() => { // between-point summary
+    const last = L.strokes.slice(-6), hs = last.map(x => x.metrics.contactHeightM).filter(v => v != null), ts = last.map(x => x.metrics.tempoS).filter(v => v != null);
+    const txt = `Last ${last.length}: contact ${hs.length ? fmt(Math.min(...hs), 2) + ' to ' + fmt(Math.max(...hs), 2) + ' m' : 'not measured'}` + (ts.length ? `, tempo ${fmt(ts.reduce((a, b) => a + b, 0) / ts.length, 2)} s average.` : '.');
+    say(txt); flashCue(txt);
+  }, 6000);
 }
 
 $('#startBtn').onclick = () => { engine && engine.reset(); L.strokes = []; L.running = true; L.start = Date.now(); $('#setup').hidden = true; $('#hCount').textContent = '0'; say('Go'); };
@@ -183,8 +199,8 @@ function openReplay(s, src) {
   $('#replay').hidden = false; RP && cancelAnimationFrame(RP.raf);
   const t0 = s.tStart - .2, t1 = s.tEnd + .2;
   RP = { s, src, t0, t1, real0: performance.now(), frozen: false, freezeUntil: 0, frozeOnce: false };
-  if (src.video) { const v = src.video; rp.width = v.videoWidth; rp.height = v.videoHeight; v.pause(); v.currentTime = t0; v.playbackRate = .25; v.muted = true; v.onseeked = () => { v.onseeked = null; v.play().catch(() => { }); RP.real0 = performance.now(); }; RP.k = 1; }
-  else { const b = src.frames[0]?.bmp; if (!b) { $('#replay').hidden = true; return; } rp.width = b.width; rp.height = b.height; RP.k = b.width / s._src[0]; }
+  if (src.video) { const v = src.video; RP.stack = v.videoWidth > v.videoHeight && innerHeight > innerWidth; rp.width = v.videoWidth * (RP.stack ? 1 : 2); rp.height = v.videoHeight * (RP.stack ? 2 : 1); v.pause(); v.currentTime = t0; v.playbackRate = .25; v.muted = true; v.onseeked = () => { v.onseeked = null; v.play().catch(() => { }); RP.real0 = performance.now(); }; RP.k = 1; }
+  else { const b = src.frames[0]?.bmp; if (!b) { $('#replay').hidden = true; return; } RP.stack = b.width > b.height && innerHeight > innerWidth; rp.width = b.width * (RP.stack ? 1 : 2); rp.height = b.height * (RP.stack ? 2 : 1); RP.k = b.width / s._src[0]; }
   RP.mirror = !src.video && L.facing === 'user';
   const b = band('contact_low', S.shot);
   $('#rpInfo').textContent = `${shotName(s.shot?.id || S.shot)} · contact ${fmt(s.metrics.contactHeightM, 2)} m${b ? ` (target ${b[0]}-${b[1]})` : ''} · tempo ${fmt(s.metrics.tempoS, 2)} s · stages approx.`;
@@ -206,30 +222,37 @@ function stepReplay(now) {
   drawReplay(t);
 }
 function nearest(arr, t, key = 't') { let b = arr[0]; for (const x of arr) if (Math.abs(x[key] - t) < Math.abs(b[key] - t)) b = x; return b; }
+// Split replay: left = you (video, hit path, contact line), right = the ideal 3D model at the same scale and timing.
+const gc = document.createElement('canvas'), gctx = gc.getContext('2d');
 function drawReplay(t) {
-  const R = RP, s = R.s, k = R.k, W = rp.width, H = rp.height, lw = Math.max(2, H / 160), labels = [];
-  rctx.save(); if (R.mirror) rctx.setTransform(-1, 0, 0, 1, W, 0);
+  const R = RP, s = R.s, k = R.k, W = R.stack ? rp.width : rp.width / 2, H = R.stack ? rp.height / 2 : rp.height, ox = R.stack ? 0 : W, oy = R.stack ? H : 0, lw = Math.max(2, Math.min(W, H) / 160), labels = [];
+  rctx.fillStyle = '#1b2733'; rctx.fillRect(0, 0, rp.width, rp.height);
+  rctx.save(); rctx.beginPath(); rctx.rect(0, 0, W, H); rctx.clip(); if (R.mirror) rctx.setTransform(-1, 0, 0, 1, W, 0);
   try { if (R.src.video) rctx.drawImage(R.src.video, 0, 0, W, H); else rctx.drawImage(nearest(R.src.frames, t).bmp, 0, 0); } catch { rctx.restore(); return; } // frame released
   const sc = kp => kp.map(p => [p[0] * k, p[1] * k, p[2]]);
-  // trail coloured by phase
   rctx.lineCap = 'round'; rctx.lineWidth = lw * 1.8;
   const tr = s.trail.filter(p => p[2] <= t);
   for (let i = 1; i < tr.length; i++) { const ph = s.phases.find(p => tr[i][2] >= p.tStart && tr[i][2] <= p.tEnd); rctx.strokeStyle = PH_COL[ph ? ph.id : 'ready']; rctx.beginPath(); rctx.moveTo(tr[i - 1][0] * k, tr[i - 1][1] * k); rctx.lineTo(tr[i][0] * k, tr[i][1] * k); rctx.stroke(); }
+  let wy = null;
   if (s.track.length) {
     const kp = sc(nearest(s.track, t).keypoints);
-    // ghost: time-warped so its contact matches the player's contact
     const spec = PadelGhost.specs.shots[s.shot?.id || S.shot], fit = PadelGhost.fitTo(kp);
-    if (spec && fit) {
+    if (spec && fit) { // ideal model, time-warped so its contact matches yours, drawn in its own half
       const cu = spec.contactU, u = t < s.tContact ? cu * (t - s.tStart) / Math.max(.05, s.tContact - s.tStart) : cu + (1 - cu) * (t - s.tContact) / Math.max(.05, s.tEnd - s.tContact);
-      fit.facing = facingOf(kp); drawGhost(rctx, s.shot?.id || S.shot, u, fit, lw * 2.2);
+      fit.facing = facingOf(kp); if (gc.width !== W || gc.height !== H) { gc.width = W; gc.height = H; } gctx.clearRect(0, 0, W, H);
+      window.PadelGhost3D?.ready && window.PadelGhost3D.draw(gctx, s.shot?.id || S.shot, u, fit, { alpha: 1, leftHanded: S.hand === 'left' });
     }
-    if (Math.abs(t - s.tContact) < .04) { // contact line + label
-      const ck = sc(nearest(s.track, s.tContact).keypoints), wy = ck[S.hand === 'left' ? 9 : 10][1];
-      rctx.setLineDash([lw * 3, lw * 2]); rctx.strokeStyle = '#d8ea3a'; rctx.lineWidth = lw; rctx.beginPath(); rctx.moveTo(0, wy); rctx.lineTo(W, wy); rctx.stroke(); rctx.setLineDash([]);
-      labels.push([`Contact ${fmt(s.metrics.contactHeightM, 2)} m`, W * .03, wy - lw * 3]);
-    }
+    if (t >= s.tContact - .02) { const ck = sc(nearest(s.track, s.tContact).keypoints); wy = ck[S.hand === 'left' ? 9 : 10][1]; }
   }
-  rctx.restore(); labels.forEach(a => label(a[0], a[1], a[2], lw));
+  rctx.restore();
+  rctx.save(); if (R.mirror) rctx.setTransform(-1, 0, 0, 1, ox * 2 + W, 0); rctx.drawImage(gc, ox, oy); rctx.restore();
+  if (wy != null) { // your contact height across both halves
+    rctx.setLineDash([lw * 3, lw * 2]); rctx.strokeStyle = '#d8ea3a'; rctx.lineWidth = lw; rctx.beginPath(); rctx.moveTo(0, wy); rctx.lineTo(R.stack ? W : 2 * W, wy); if (R.stack) { rctx.moveTo(0, wy + H); rctx.lineTo(W, wy + H); } rctx.stroke(); rctx.setLineDash([]);
+    labels.push([`Your contact ${fmt(s.metrics.contactHeightM, 2)} m`, W * .03, wy - lw * 3]);
+  }
+  rctx.fillStyle = '#ffffff66'; if (R.stack) rctx.fillRect(0, H - lw / 2, W, lw); else rctx.fillRect(W - lw / 2, 0, lw, H);
+  labels.forEach(a => label(a[0], a[1], a[2], lw));
+  label('YOU', W * .03, lw * 12, lw); label('IDEAL', ox + W * .03, oy + lw * 12, lw);
   const ph = s.phases.find(p => t >= p.tStart && t <= p.tEnd);
   label((ph ? PH_NAME[ph.id] : t < s.tStart ? 'Ready' : 'Recovery') + ' (approx.)  0.25x', W * .03, H - lw * 6, lw);
 }

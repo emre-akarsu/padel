@@ -60,13 +60,19 @@ pre{white-space:pre-wrap;font-size:12px}
   <h2>Shot</h2><div class="chips" id="shots"></div>
   <h2>Mode</h2>
   <div class="tiles">
-    <button class="tile" data-go="shadow"><b>Shadow swing mirror</b><span>No ball. Swing slowly, watch the ghost coach over you.</span></button>
-    <button class="tile" data-go="drill"><b>Drill</b><span>Ball machine or feeding. Slow-mo replay after each hit.</span></button>
-    <button class="tile" data-go="upload"><b>Review a video</b><span>Upload a clip and get strokes and numbers.</span></button>
+    <button class="tile" data-go="shadow"><b>Shadow swing mirror</b><span>No ball. Swing slowly; the ideal model swings beside you.</span></button>
+    <button class="tile" data-go="drill" data-use="machine"><b>Ball machine</b><span>Same shot every ball. Slow-mo replay, you vs ideal, after each hit.</span></button>
+    <button class="tile" data-go="drill" data-use="gadget"><b>Hitting gadget</b><span>Tethered or fixed ball. Best for contact height.</span></button>
+    <button class="tile" data-go="drill" data-use="wall"><b>Wall / rebound</b><span>Solo rally. Count, tempo, replays.</span></button>
+    <button class="tile" data-go="drill" data-use="lesson"><b>Coach lesson</b><span>Feeding. Coach answers each replay; answers become labels.</span></button>
+    <button class="tile" data-go="upload"><b>Match or handheld clip</b><span>Upload only: strokes and numbers after the session.</span></button>
     <button class="tile" data-go="summary"><b>Session summary</b><span>Your last sessions.</span></button>
     <button class="tile" data-go="inbox"><b>Coach Review Inbox</b><span>Approve or fix strokes and flags. Export labels.</span></button>
     <a class="tile" href="bench.html" style="text-decoration:none"><b>Feasibility test</b><span>fps, latency, battery log over 30 min.</span></a>
   </div>
+  <h2>Error checks and release gates</h2>
+  <div class="card"><table><tbody id="gates"></tbody></table>
+    <p class="muted small">A spoken cue needs ≥85% coach-confirmed precision on phone video (≥57/60), "looks good" ≥95%. Until then each check shows only its number against the target band.</p></div>
   <h2>Settings</h2>
   <div class="card form">
     <label class="f">Engine<select id="sEngine"></select></label>
