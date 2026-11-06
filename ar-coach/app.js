@@ -119,7 +119,6 @@ function draw(r, t) {
     octx.lineWidth = s * 1.5; octx.lineCap = 'round';
     for (let i = 1; i < L.trail.length; i++) { octx.globalAlpha = i / L.trail.length; octx.strokeStyle = '#d8ea3a'; octx.beginPath(); octx.moveTo(...L.trail[i - 1]); octx.lineTo(...L.trail[i]); octx.stroke(); }
     octx.globalAlpha = 1;
-    PadelGhost.draw(octx, kp, { width: s * 1.6 });
     const fit = PadelGhost.fitTo(kp); if (fit) { fit.facing = facingOf(kp); L.lastFit = fit; }
   }
   if (L.ghostOn && L.lastFit && L.mode === 'shadow') {
@@ -132,8 +131,8 @@ function draw(r, t) {
 // Ghost coach: the Strike Player girl in 3D (ghost3d.js) when available, else the 2D stick ghost.
 function drawGhost(ctx, shot, u, fit, width) {
   const lh = S.hand === 'left';
-  if (window.PadelGhost3D?.ready && window.PadelGhost3D.draw(ctx, shot, u, fit, { alpha: .6, leftHanded: lh })) return;
-  PadelGhost.draw(ctx, PadelGhost.place(PadelGhost.pose(shot, u), fit.anchor, fit.scale, fit.facing, lh), { color: '#5fb07a', alpha: .55, width });
+  if (window.PadelGhost3D?.ready && window.PadelGhost3D.draw(ctx, shot, u, fit, { alpha: .85, leftHanded: lh })) return;
+  // no stick figure: the 3D girl is the only ghost
 }
 function facingOf(kp) { // nose ahead of ears => facing that way; fall back to +x
   const ear = (kp[3][2] > kp[4][2] ? kp[3] : kp[4]); return kp[0][2] > .3 && ear[2] > .3 ? Math.sign(kp[0][0] - ear[0]) || 1 : 1;
@@ -224,7 +223,6 @@ function drawReplay(t) {
       const cu = spec.contactU, u = t < s.tContact ? cu * (t - s.tStart) / Math.max(.05, s.tContact - s.tStart) : cu + (1 - cu) * (t - s.tContact) / Math.max(.05, s.tEnd - s.tContact);
       fit.facing = facingOf(kp); drawGhost(rctx, s.shot?.id || S.shot, u, fit, lw * 2.2);
     }
-    PadelGhost.draw(rctx, kp, { width: lw * 1.4 });
     if (Math.abs(t - s.tContact) < .04) { // contact line + label
       const ck = sc(nearest(s.track, s.tContact).keypoints), wy = ck[S.hand === 'left' ? 9 : 10][1];
       rctx.setLineDash([lw * 3, lw * 2]); rctx.strokeStyle = '#d8ea3a'; rctx.lineWidth = lw; rctx.beginPath(); rctx.moveTo(0, wy); rctx.lineTo(W, wy); rctx.stroke(); rctx.setLineDash([]);
