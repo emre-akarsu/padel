@@ -103,7 +103,7 @@ async function processLive(t) {
   draw(r, t);
   // HUD
   L.fpsN++; if (performance.now() - L.fpsT > 1000) { L.fps = L.fpsN * 1000 / (performance.now() - L.fpsT); L.fpsN = 0; L.fpsT = performance.now(); }
-  $('#liveInfo').textContent = `${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
+  $('#liveInfo').textContent = `ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
   $('#hPhase').textContent = r.phase ? PH_NAME[r.phase.id] : '-';
   const q = r.quality, fb = $('#fbStat');
   if (fb) { fb.className = q.fullBody && !q.message ? 'ok' : 'bad'; fb.textContent = q.fullBody && !q.message ? 'Full body in frame ✓' : (q.message || 'Step into the frame'); }
@@ -334,7 +334,7 @@ $('#upFile').onchange = async e => {
 let deferred = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('#installBtn').hidden = false; });
 $('#installBtn').onclick = () => { deferred?.prompt(); $('#installBtn').hidden = true; };
-if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => { });
+if ('serviceWorker' in navigator) { const had = !!navigator.serviceWorker.controller; navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => { }); navigator.serviceWorker.addEventListener('controllerchange', () => { if (had && !window.__reloaded) { window.__reloaded = 1; location.reload(); } }); }
 
 (async function boot() {
   REL = await fetch('release.json').then(r => r.json());

@@ -64,5 +64,5 @@ try {
     return true;
   };
   st.ready = true;
-} catch (e) { console.warn('3D ghost unavailable, using stick ghost', e); }
+} catch (e) { st.error = String(e && e.message || e); console.warn('3D ghost unavailable, using stick ghost', e); }
 window.PadelGhost3D = st;
