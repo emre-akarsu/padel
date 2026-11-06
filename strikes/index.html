@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Strike Player</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #eef2f5; --surface: #ffffff; --ink: #14212b; --muted: #5a6b78; --line: #d3dce3; --accent: #2f6b45; --accent-ink: #fff;
+  --gold: #e9a21a; --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif; --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0e161d; --surface: #16222c; --ink: #e5edf2; --muted: #93a6b4; --line: #26343f; --accent: #5fb07a; --accent-ink: #0b1a10; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #0e161d; --surface: #16222c; --ink: #e5edf2; --muted: #93a6b4; --line: #26343f; --accent: #5fb07a; --accent-ink: #0b1a10; color-scheme: dark }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body); }
+.wrap { max-width: 1180px; margin: 0 auto; padding: 14px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left)); display: grid; gap: 14px; }
+header h1 { font: 700 clamp(30px, 6vw, 44px)/1 var(--display); margin: 0; letter-spacing: .01em }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 70ch }
+.pick { display: flex; gap: 8px; flex-wrap: wrap }
+select, button, .btn { font: 500 15px var(--body); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 9px 12px; min-height: 42px }
+select { flex: 1 1 180px; min-width: 0 }
+button, .btn { cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; justify-content: center }
+.primary { background: var(--accent); color: var(--accent-ink); border-color: transparent; font-weight: 600 }
+.main { display: grid; gap: 14px; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); align-items: start }
+@media (max-width: 860px) { .main { grid-template-columns: minmax(0, 1fr) } }
+.stage { position: relative; border-radius: 12px; overflow: hidden; background: #24303b; aspect-ratio: 4 / 5; width: 100%; max-height: 80vh }
+.stage canvas { display: block; width: 100%; height: 100%; touch-action: none }
+.ov { position: absolute; left: 10px; right: 10px; top: 10px; display: flex; justify-content: space-between; gap: 8px; pointer-events: none; align-items: start }
+.chip { font: 700 22px var(--display); color: #fff; background: rgba(6, 28, 16, .72); border-radius: 8px; padding: 3px 12px; letter-spacing: .02em }
+.tag { font: 600 13px var(--mono); color: #1b1200; background: #ffb21e; border-radius: 6px; padding: 5px 9px }
+.clock { font: 12px var(--mono); color: #fff; background: rgba(0, 0, 0, .35); border-radius: 6px; padding: 4px 8px }
+.cue { position: absolute; left: 10px; right: 10px; bottom: 54px; color: #fff; background: rgba(0, 0, 0, .62); border-radius: 10px; padding: 8px 12px; font-size: 16px; text-align: center; pointer-events: none; text-wrap: balance }
+.views { position: absolute; left: 10px; right: 10px; bottom: 10px; display: flex; gap: 6px; justify-content: flex-end }
+.views button { min-height: 34px; padding: 4px 10px; font-size: 13px; color: #fff; background: rgba(0, 0, 0, .42); border-color: rgba(255, 255, 255, .25) }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px }
+.card h2 { font: 700 26px/1.1 var(--display); margin: 0 }
+.fam { font: 12px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em }
+.ctl { display: grid; gap: 10px }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center }
+.row > * { flex: 1 1 auto }
+label.sl { display: grid; grid-template-columns: 120px 1fr 64px; gap: 8px; align-items: center; font-size: 14px }
+label.sl output { font: 13px var(--mono); text-align: right; color: var(--muted) }
+input[type=range] { width: 100%; accent-color: var(--accent) }
+label.ck { display: flex; gap: 8px; align-items: center; font-size: 14px }
+ol.phases { margin: 10px 0 0; padding: 0; list-style: none; display: grid; gap: 4px }
+ol.phases li { display: grid; grid-template-columns: 9.5em 1fr; gap: 8px; padding: 5px 8px; border-radius: 6px; font-size: 14px }
+ol.phases li b { font-weight: 600 }
+ol.phases li.on { background: color-mix(in srgb, var(--gold) 22%, transparent) }
+.note { color: var(--muted); font-size: 13px }
+[hidden] { display: none !important }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Strike Player</h1>
+    <p>Every stroke is one data file of phase targets, solved live onto the same 3D player. Gold traces the racket head, blue the ball. These are <b>ideal</b> techniques authored from standard coaching models, not measured from a player.</p>
+  </header>
+  <div class="pick">
+    <select id="sport" aria-label="Sport"></select>
+    <select id="tech" aria-label="Technique"></select>
+    <a id="arbtn" class="btn primary" rel="ar" hidden><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" width="1" height="1">Open in AR</a>
+  </div>
+  <div class="main">
+    <div class="stage" id="stage">
+      <div class="ov"><span class="chip" id="chip">…</span><span style="display:grid;gap:6px;justify-items:end"><span class="tag" id="slowtag" hidden></span><span class="clock" id="clock"></span></span></div>
+      <div class="cue" id="cue"></div>
+      <div class="views"><button data-view="side">Side</button><button data-view="front">Front</button><button data-view="back">Back</button><button data-view="top">Top</button></div>
+    </div>
+    <div style="display:grid;gap:14px">
+      <div class="card">
+        <div class="fam" id="techfam"></div>
+        <h2 id="techname"></h2>
+        <p id="techdesc" style="margin:6px 0 0"></p>
+        <ol class="phases" id="phases"></ol>
+      </div>
+      <div class="card ctl">
+        <div class="row"><button id="play" class="primary">Pause</button><button id="hand">Right-handed</button></div>
+        <input id="scrub" type="range" min="0" max="1" step="0.0005" value="0" aria-label="Scrub">
+        <label class="sl">Playback speed<input id="speed" type="range" min="0.25" max="1.5" step="0.05" value="1"><output id="speedv">1.00×</output></label>
+        <label class="sl">Slow motion<input id="slow" type="range" min="0.08" max="1" step="0.01" value="0.25"><output id="slowv">0.25×</output></label>
+        <label class="sl">Contact height<input id="contact" type="range" min="-0.25" max="0.25" step="0.01" value="0"><output id="contactv">+0 cm</output></label>
+        <div class="row"><label class="ck"><input id="replay" type="checkbox" checked> Replay at full speed</label><label class="ck"><input id="trail" type="checkbox" checked> Show paths</label></div>
+        <p class="note">Slow motion eases in before contact and out after it. Left-handed mirrors the whole scene. Contact height moves the hand at contact; the ball path is recomputed so it still meets the racket.</p>
+      </div>
+    </div>
+  </div>
+  <p class="note">Character: Microsoft Rocketbox avatar (MIT licence). Poses are authored targets solved with two-bone IK; there is no motion capture.</p>
+</div>
+<script type="module" src="engine.js"></script>
+</body>
+</html>
