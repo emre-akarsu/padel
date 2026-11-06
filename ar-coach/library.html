@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideal Swings</title>
+<style>
+:root {
+  --bg: #eef2f5;
+  --surface: #fff;
+  --ink: #14212b;
+  --muted: #5a6b78;
+  --line: #d3dce3;
+  --accent: #2f6b45;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e161d;
+    --surface: #16222c;
+    --ink: #e5edf2;
+    --muted: #93a6b4;
+    --line: #26343f;
+    --accent: #5fb07a;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e161d;
+  --surface: #16222c;
+  --ink: #e5edf2;
+  --muted: #93a6b4;
+  --line: #26343f;
+  --accent: #5fb07a;
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 16px;
+  line-height: 1.45;
+  overflow-x: hidden;
+}
+.wrap {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 16px 48px;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 20px 0 12px;
+}
+h1 { font-size: 1.5rem; margin: 0; }
+.back { color: var(--accent); text-decoration: none; font-weight: 600; white-space: nowrap; }
+.back:hover, .back:focus-visible { text-decoration: underline; }
+
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 16px;
+}
+.chip {
+  appearance: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font: inherit;
+  cursor: pointer;
+}
+.chip[aria-pressed="true"] {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+select {
+  font: inherit;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 6px 10px;
+  max-width: 100%;
+}
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.status { color: var(--muted); padding: 24px 0; }
+.status.error { color: #b3261e; }
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .status.error { color: #ff8a80; }
+}
+:root[data-theme="dark"] .status.error { color: #ff8a80; }
+
+.list { display: grid; gap: 12px; }
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
+.card-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  justify-content: space-between;
+}
+.card h2 { font-size: 1.1rem; margin: 0; }
+.badge {
+  font-size: 0.8rem;
+  color: var(--muted);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.sport-tag { color: var(--accent); font-weight: 600; font-size: 0.8rem; }
+.summary { margin: 8px 0; color: var(--ink); }
+.phases { color: var(--muted); font-size: 0.9rem; margin: 6px 0 10px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.btn {
+  display: inline-block;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  border-radius: 8px;
+  padding: 6px 12px;
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 0.92rem;
+}
+.btn:hover, .btn:focus-visible { background: var(--accent); color: #fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Ideal swings</h1>
+    <a class="back" href="index.html">&larr; Back</a>
+  </header>
+
+  <div class="controls" role="group" aria-label="Sport filter">
+    <button type="button" class="chip" data-sport="padel" aria-pressed="true">Padel</button>
+    <button type="button" class="chip" data-sport="tennis" aria-pressed="false">Tennis</button>
+    <label class="sr-only" for="family" style="margin-left:auto">Family</label>
+    <select id="family" aria-label="Family">
+      <option value="">All families</option>
+    </select>
+  </div>
+
+  <div id="status" class="status" role="status">Loading&hellip;</div>
+  <main id="list" class="list" aria-live="polite"></main>
+</div>
+
+<script>
+(function () {
+  var SOURCES = {
+    padel: '../strikes/specs/padel.json',
+    tennis: '../strikes/specs/tennis.json'
+  };
+  var data = { padel: null, tennis: null };
+  var errors = [];
+
+  var statusEl = document.getElementById('status');
+  var listEl = document.getElementById('list');
+  var familySel = document.getElementById('family');
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = String(text);
+    return n;
+  }
+
+  function selectedSports() {
+    return chips.filter(function (c) { return c.getAttribute('aria-pressed') === 'true'; })
+                .map(function (c) { return c.getAttribute('data-sport'); });
+  }
+
+  function allTechniques() {
+    var out = [];
+    selectedSports().forEach(function (sport) {
+      var spec = data[sport];
+      if (!spec || !Array.isArray(spec.techniques)) return;
+      spec.techniques.forEach(function (t) {
+        out.push({ sport: sport, tech: t });
+      });
+    });
+    return out;
+  }
+
+  function refreshFamilies() {
+    var current = familySel.value;
+    var fams = {};
+    allTechniques().forEach(function (item) {
+      if (item.tech.family) fams[String(item.tech.family)] = true;
+    });
+    var names = Object.keys(fams).sort();
+    while (familySel.firstChild) familySel.removeChild(familySel.firstChild);
+    familySel.appendChild(el('option', null, 'All families'));
+    familySel.firstChild.value = '';
+    names.forEach(function (f) {
+      var o = el('option', null, f);
+      o.value = f;
+      familySel.appendChild(o);
+    });
+    familySel.value = names.indexOf(current) >= 0 ? current : '';
+  }
+
+  function buildCard(sport, t) {
+    var card = el('article', 'card');
+
+    var head = el('div', 'card-head');
+    var title = el('h2', null, t.name || t.id);
+    head.appendChild(title);
+    var meta = el('div');
+    meta.appendChild(el('span', 'sport-tag', sport));
+    if (t.family) {
+      meta.appendChild(document.createTextNode(' '));
+      meta.appendChild(el('span', 'badge', t.family));
+    }
+    head.appendChild(meta);
+    card.appendChild(head);
+
+    if (t.summary) card.appendChild(el('p', 'summary', t.summary));
+
+    if (Array.isArray(t.phases) && t.phases.length) {
+      var labels = t.phases.map(function (p) { return p.label || p.name || ''; })
+                            .filter(function (s) { return s; });
+      if (labels.length) {
+        card.appendChild(el('div', 'phases', labels.join(' → ')));
+      }
+    }
+
+    var actions = el('div', 'actions');
+    var watch = el('a', 'btn', 'Watch 3D');
+    watch.href = '../strikes/index.html?sport=' + encodeURIComponent(sport) +
+                 '&tech=' + encodeURIComponent(t.id);
+    actions.appendChild(watch);
+
+    if (t.ar) {
+      var ar = el('a', 'btn', 'AR');
+      ar.href = '../strikes/' + String(t.ar);
+      ar.setAttribute('rel', 'ar');
+      actions.appendChild(ar);
+    }
+
+    if (sport === 'padel') {
+      var practice = el('a', 'btn', 'Practice');
+      practice.href = 'index.html#practice=' + encodeURIComponent(t.id);
+      actions.appendChild(practice);
+    }
+
+    card.appendChild(actions);
+    return card;
+  }
+
+  function render() {
+    var items = allTechniques();
+    var fam = familySel.value;
+    if (fam) items = items.filter(function (i) { return i.tech.family === fam; });
+
+    while (listEl.firstChild) listEl.removeChild(listEl.firstChild);
+    items.forEach(function (i) { listEl.appendChild(buildCard(i.sport, i.tech)); });
+
+    var msgs = [];
+    if (errors.length) msgs.push(errors.join(' '));
+    if (!selectedSports().length) {
+      msgs.push('Select a sport to see techniques.');
+    } else if (!items.length && !errors.length) {
+      msgs.push('No techniques match these filters.');
+    }
+    statusEl.textContent = msgs.join(' ');
+    statusEl.className = 'status' + (errors.length ? ' error' : '');
+    if (!msgs.length) statusEl.textContent = '';
+  }
+
+  function load(sport) {
+    return fetch(SOURCES[sport], { cache: 'no-cache' })
+      .then(function (r) {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      })
+      .then(function (json) {
+        data[sport] = json;
+      })
+      .catch(function (err) {
+        errors.push('Could not load ' + sport + ' techniques (' + (err && err.message ? err.message : 'error') + ').');
+      });
+  }
+
+  chips.forEach(function (chip) {
+    chip.addEventListener('click', function () {
+      var pressed = chip.getAttribute('aria-pressed') === 'true';
+      chip.setAttribute('aria-pressed', pressed ? 'false' : 'true');
+      refreshFamilies();
+      render();
+    });
+  });
+
+  familySel.addEventListener('change', render);
+
+  statusEl.textContent = 'Loading…';
+  Promise.all([load('padel'), load('tennis')]).then(function () {
+    refreshFamilies();
+    render();
+  });
+})();
+</script>
+</body>
+</html>

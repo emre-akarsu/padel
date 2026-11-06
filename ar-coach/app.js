@@ -33,10 +33,21 @@ async function getEngine(mode) {
 /* ---------- navigation ---------- */
 function show(id) {
   $$('main.page,#live').forEach(e => e.hidden = e.id !== id);
-  if (id === 'summary') renderSummary(); if (id === 'inbox') renderInbox();
+  if (id === 'summary') renderSummary(); if (id === 'inbox') renderInbox(); if (id === 'drills') renderDrills();
   if (id === 'shadow' || id === 'drill') startLive(id);
 }
-document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (!g) return; if (g.dataset.use) { S.use = g.dataset.use; saveS(); } show(g.dataset.go); });
+document.addEventListener('click', e => { const g = e.target.closest('[data-go]'); if (!g) return; if (g.dataset.use) { S.use = g.dataset.use; saveS(); } if (g.dataset.go !== 'shadow' && g.dataset.go !== 'drill') DR = null; show(g.dataset.go); });
+/* ---------- error-correction drill sets (drills.json via drills.js) ---------- */
+let DR = null; // active drill step {set, stepIndex, step}
+async function renderDrills() {
+  await PadelDrills.load();
+  PadelDrills.render($('#drillList'), { checks: REL.checks, shotName, onStart: p => {
+    DR = { set: p.set, stepIndex: p.stepIndex, step: p.step };
+    if (p.shot && PadelGhost.specs.shots[p.shot]) S.shot = p.shot;
+    if (p.step.use) S.use = p.step.use; saveS();
+    show(p.step.mode === 'shadow' ? 'shadow' : 'drill');
+  } });
+}
 const USE_TIPS = {
   shadow: ['Prop the phone on a bag, shelf or the floor, 2-4 m away.', 'Whole body in frame, side-on to the phone.', 'Swing slowly and watch the ideal model swing beside you.'],
   machine: ['Clip the phone to the side fence, 5-7 m from your hitting spot, at hip height (1.2-1.5 m).', 'Landscape, main 1x lens (no ultrawide).', 'Same shot every ball. Earbuds on for the spoken numbers.'],
@@ -70,8 +81,8 @@ async function startLive(mode) {
   Object.assign(L, { mode, on: true, running: false, busy: false, ring: [], keep: new Set(), strokes: [], trail: [], idx: 0, lastProc: 0, fpsN: 0, fpsT: performance.now(), fps: 0, dropped: 0, faults: 0, sessionId: 'S' + Date.now().toString(36), start: Date.now(), ghostOn: mode === 'shadow', facing: L.facing || (mode === 'shadow' ? 'user' : 'environment'), lastFit: null });
   $('#live').hidden = false; $('#setup').hidden = false; $('#replay').hidden = true; $('#lastReplay').hidden = true;
   const use = mode === 'shadow' ? 'shadow' : (USE_TIPS[S.use] && S.use !== 'shadow' ? S.use : 'machine');
-  $('#liveTitle').textContent = USE_NAME[use] + ' · ' + shotName(S.shot);
-  const tips = USE_TIPS[use];
+  $('#liveTitle').textContent = (DR ? `${DR.set.title} · step ${DR.stepIndex + 1}: ` : USE_NAME[use] + ' · ') + shotName(S.shot);
+  const tips = DR ? [`${DR.step.name}: ${DR.step.reps} reps.`, 'Focus: ' + DR.step.focus, 'Pass: ' + DR.set.pass, ...USE_TIPS[use].slice(0, 1)] : USE_TIPS[use];
   $('#setupList').innerHTML = tips.map(t => `<li>${t}</li>`).join('') + '<li id="fbStat">Full body: checking...</li>';
   $('#hCount').textContent = '0'; ['#hTempo', '#hHeight', '#hPhase'].forEach(s => $(s).textContent = '-');
   const b = band('contact_low', S.shot); $('#hHeightL').textContent = 'contact m' + (b && gate('contact_low').show ? ` (${b[0]}-${b[1]})` : '');
@@ -167,6 +178,8 @@ function onStroke(s) {
   L.lastStroke = s; $('#lastReplay').hidden = false;
   addInbox(s, 'live', thumbFromBitmap(frames, s));
   if (L.mode === 'drill') setTimeout(() => openReplay(s, { frames }), 300);
+  if (DR && n === DR.step.reps) { PadelDrills.progress.mark(DR.set.id, DR.stepIndex); setTimeout(() => { say(`Step done: ${DR.step.reps} reps.`); flashCue('Drill step done ✓ End to see your summary'); }, 3000); }
+  else if (DR && n < DR.step.reps) setTimeout(() => flashCue(`Focus: ${DR.step.focus} (${n}/${DR.step.reps})`), 2600);
   if (n % 6 === 0) setTimeout(() => { // between-point summary
     const last = L.strokes.slice(-6), hs = last.map(x => x.metrics.contactHeightM).filter(v => v != null), ts = last.map(x => x.metrics.tempoS).filter(v => v != null);
     const txt = `Last ${last.length}: contact ${hs.length ? fmt(Math.min(...hs), 2) + ' to ' + fmt(Math.max(...hs), 2) + ' m' : 'not measured'}` + (ts.length ? `, tempo ${fmt(ts.reduce((a, b) => a + b, 0) / ts.length, 2)} s average.` : '.');
@@ -361,5 +374,7 @@ if ('serviceWorker' in navigator) { const had = !!navigator.serviceWorker.contro
   REL = await fetch('release.json').then(r => r.json());
   await PadelGhost.load();
   renderHome();
-  const h = location.hash.slice(1); if (['upload', 'summary', 'inbox'].includes(h)) show(h);
+  const h = location.hash.slice(1); if (['upload', 'summary', 'inbox', 'drills'].includes(h)) show(h);
+  const pr = h.match(/^practice=(\w+)/), sh = pr && Object.keys(PadelGhost.specs.shots).find(k => k === pr[1] || PadelGhost.specs.shots[k].strikeId === pr[1]);
+  if (sh) { S.shot = sh; saveS(); renderHome(); }
 })();

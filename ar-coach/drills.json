@@ -1,0 +1,292 @@
+{
+ "version": 1,
+ "sets": [
+  {
+   "id": "fix_contact_low",
+   "check": "contact_low",
+   "title": "Meet the ball higher",
+   "why": "Hitting low costs power, angle and control on overheads.",
+   "shots": [
+    "bandeja",
+    "vibora",
+    "smash"
+   ],
+   "steps": [
+    {
+     "name": "Shadow 10 slow reps",
+     "mode": "shadow",
+     "reps": 10,
+     "focus": "Reach tall, hit at the top"
+    },
+    {
+     "name": "Fixed ball (gadget)",
+     "mode": "drill",
+     "use": "gadget",
+     "reps": 10,
+     "focus": "Hit at full reach"
+    },
+    {
+     "name": "Ball machine, easy pace",
+     "mode": "drill",
+     "use": "machine",
+     "reps": 15,
+     "focus": "Step under, then extend up"
+    },
+    {
+     "name": "Live feeding",
+     "mode": "drill",
+     "use": "lesson",
+     "reps": 20,
+     "focus": "Call 'high' before each hit"
+    }
+   ],
+   "pass": "Hit the target band on 7 of 10 reps"
+  },
+  {
+   "id": "fix_contact_behind",
+   "check": "contact_behind",
+   "title": "Contact in front of you",
+   "why": "Late contact behind the body kills control and leaks balls long.",
+   "shots": [
+    "bandeja",
+    "vibora",
+    "smash"
+   ],
+   "steps": [
+    {
+     "name": "Shadow 10 slow reps",
+     "mode": "shadow",
+     "reps": 10,
+     "focus": "Point the ball, strike ahead"
+    },
+    {
+     "name": "Fixed ball (gadget)",
+     "mode": "drill",
+     "use": "gadget",
+     "reps": 10,
+     "focus": "Strike in front of the shoulder"
+    },
+    {
+     "name": "Ball machine, easy pace",
+     "mode": "drill",
+     "use": "machine",
+     "reps": 15,
+     "focus": "Move back early, hit forward"
+    },
+    {
+     "name": "Live feeding",
+     "mode": "drill",
+     "use": "lesson",
+     "reps": 20,
+     "focus": "Hit in front, finish low"
+    }
+   ],
+   "pass": "Hit the target band on 7 of 10 reps"
+  },
+  {
+   "id": "fix_elbow_contact",
+   "check": "elbow_contact",
+   "title": "Extend the arm at contact",
+   "why": "A bent arm at impact loses reach, pace and consistency.",
+   "shots": [
+    "smash",
+    "vibora",
+    "bandeja"
+   ],
+   "steps": [
+    {
+     "name": "Shadow 10 slow reps",
+     "mode": "shadow",
+     "reps": 10,
+     "focus": "Throw up, reach straight"
+    },
+    {
+     "name": "Fixed ball (gadget)",
+     "mode": "drill",
+     "use": "gadget",
+     "reps": 10,
+     "focus": "Long arm through the ball"
+    },
+    {
+     "name": "Ball machine, easy pace",
+     "mode": "drill",
+     "use": "machine",
+     "reps": 15,
+     "focus": "Extend fully, no elbow collapse"
+    },
+    {
+     "name": "Live feeding",
+     "mode": "drill",
+     "use": "lesson",
+     "reps": 20,
+     "focus": "Reach long on every ball"
+    }
+   ],
+   "pass": "Hit the target band on 7 of 10 reps"
+  },
+  {
+   "id": "fix_knee_load",
+   "check": "knee_load",
+   "title": "Load the knees",
+   "why": "Straight legs rob you of balance and leg drive.",
+   "shots": [
+    "smash",
+    "smash_x3",
+    "bandeja"
+   ],
+   "steps": [
+    {
+     "name": "Shadow 10 slow reps",
+     "mode": "shadow",
+     "reps": 10,
+     "focus": "Sit down, then spring"
+    },
+    {
+     "name": "Fixed ball (gadget)",
+     "mode": "drill",
+     "use": "gadget",
+     "reps": 10,
+     "focus": "Bend, then push up"
+    },
+    {
+     "name": "Ball machine, easy pace",
+     "mode": "drill",
+     "use": "machine",
+     "reps": 15,
+     "focus": "Load before the ball arrives"
+    },
+    {
+     "name": "Live feeding",
+     "mode": "drill",
+     "use": "lesson",
+     "reps": 20,
+     "focus": "Bend on every feed"
+    }
+   ],
+   "pass": "Hit the target band on 7 of 10 reps"
+  },
+  {
+   "id": "fix_free_arm_up",
+   "check": "free_arm_up",
+   "title": "Lift the free arm",
+   "why": "A dropped free arm unbalances the turn and tracking.",
+   "shots": [
+    "bandeja",
+    "vibora",
+    "smash"
+   ],
+   "steps": [
+    {
+     "name": "Shadow 10 slow reps",
+     "mode": "shadow",
+     "reps": 10,
+     "focus": "Point at the ball"
+    },
+    {
+     "name": "Fixed ball (gadget)",
+     "mode": "drill",
+     "use": "gadget",
+     "reps": 10,
+     "focus": "Free hand tracks the ball"
+    },
+    {
+     "name": "Ball machine, easy pace",
+     "mode": "drill",
+     "use": "machine",
+     "reps": 15,
+     "focus": "Free arm up, shoulders turn"
+    },
+    {
+     "name": "Live feeding",
+     "mode": "drill",
+     "use": "lesson",
+     "reps": 20,
+     "focus": "Arm up before racket"
+    }
+   ],
+   "pass": "Hit the target band on 7 of 10 reps"
+  },
+  {
+   "id": "fix_racket_up_early",
+   "check": "racket_up_early",
+   "title": "Racket up early",
+   "why": "Late racket prep rushes the swing and shortens the contact window.",
+   "shots": [
+    "bandeja",
+    "vibora",
+    "smash"
+   ],
+   "steps": [
+    {
+     "name": "Shadow 10 slow reps",
+     "mode": "shadow",
+     "reps": 10,
+     "focus": "Racket up as you turn"
+    },
+    {
+     "name": "Fixed ball (gadget)",
+     "mode": "drill",
+     "use": "gadget",
+     "reps": 10,
+     "focus": "Racket up before ball peaks"
+    },
+    {
+     "name": "Ball machine, easy pace",
+     "mode": "drill",
+     "use": "machine",
+     "reps": 15,
+     "focus": "Prepare on first step back"
+    },
+    {
+     "name": "Live feeding",
+     "mode": "drill",
+     "use": "lesson",
+     "reps": 20,
+     "focus": "Racket up on feeder's contact"
+    }
+   ],
+   "pass": "Hit the target band on 7 of 10 reps"
+  },
+  {
+   "id": "fix_tempo",
+   "check": "tempo",
+   "title": "Prepare earlier",
+   "why": "Late preparation leaves no time to set up and hit cleanly.",
+   "shots": [
+    "bandeja",
+    "bajada",
+    "smash"
+   ],
+   "steps": [
+    {
+     "name": "Shadow 10 slow reps",
+     "mode": "shadow",
+     "reps": 10,
+     "focus": "Prep fast, then wait"
+    },
+    {
+     "name": "Fixed ball (gadget)",
+     "mode": "drill",
+     "use": "gadget",
+     "reps": 10,
+     "focus": "Be set before the ball drops"
+    },
+    {
+     "name": "Ball machine, easy pace",
+     "mode": "drill",
+     "use": "machine",
+     "reps": 15,
+     "focus": "Set up on the bounce"
+    },
+    {
+     "name": "Live feeding",
+     "mode": "drill",
+     "use": "lesson",
+     "reps": 20,
+     "focus": "React at feeder's contact"
+    }
+   ],
+   "pass": "Hit the target band on 7 of 10 reps"
+  }
+ ]
+}

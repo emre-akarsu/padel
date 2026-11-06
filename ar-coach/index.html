@@ -66,6 +66,8 @@ pre{white-space:pre-wrap;font-size:12px}
     <button class="tile" data-go="drill" data-use="wall"><b>Wall / rebound</b><span>Solo rally. Count, tempo, replays.</span></button>
     <button class="tile" data-go="drill" data-use="lesson"><b>Coach lesson</b><span>Feeding. Coach answers each replay; answers become labels.</span></button>
     <button class="tile" data-go="upload"><b>Match or handheld clip</b><span>Upload only: strokes and numbers after the session.</span></button>
+    <button class="tile" data-go="drills"><b>Error-correction drills</b><span>One drill set per error check: shadow → fixed ball → machine → feeding.</span></button>
+    <a class="tile" href="library.html" style="text-decoration:none"><b>Ideal swings</b><span>All padel and tennis strokes in 3D, slow-mo and AR.</span></a>
     <button class="tile" data-go="summary"><b>Session summary</b><span>Your last sessions.</span></button>
     <button class="tile" data-go="inbox"><b>Coach Review Inbox</b><span>Approve or fix strokes and flags. Export labels.</span></button>
     <a class="tile" href="bench.html" style="text-decoration:none"><b>Feasibility test</b><span>fps, latency, battery log over 30 min.</span></a>
@@ -89,6 +91,12 @@ pre{white-space:pre-wrap;font-size:12px}
   <div class="bar"><button class="btn" data-go="home">Back</button><h1 class="grow">Review a video</h1></div>
   <div class="card"><input type="file" id="upFile" accept="video/*"> <span id="upStatus" class="muted small"></span></div>
   <div id="upResult"></div>
+</main>
+
+<main class="page" id="drills" hidden>
+  <div class="bar"><button class="btn" data-go="home">Back</button><h1 class="grow">Error-correction drills</h1></div>
+  <p class="muted small">Each step starts a live session with the step's shot and setup. A step is ticked when you finish its reps. Cues stay numbers-only until the check passes its gate.</p>
+  <div id="drillList"></div>
 </main>
 
 <main class="page" id="summary" hidden>
@@ -138,6 +146,7 @@ pre{white-space:pre-wrap;font-size:12px}
 <script src="engine/onnx.js"></script>
 <script src="engine/remote.js"></script>
 <!-- Plug a real engine here: <script src="engine/my-engine.js"></script> registering PadelEngines.register('real', ...) -->
+<script src="drills.js"></script>
 <script src="app.js"></script>
 </body>
 </html>
