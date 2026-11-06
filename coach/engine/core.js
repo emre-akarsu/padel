@@ -33,6 +33,8 @@
   const conf = (kp, ids) => ids.reduce((s, i) => s + kp[i][2], 0) / ids.length;
   const emptyMetrics = n => ({ strokeCount: n, tempoS: null, contactHeightM: null, contactAheadM: null, elbowAngleContactDeg: null, kneeAngleLoadDeg: null, wristSpeedPeak: null });
 
+  // facing in a side view: nose ahead of the visible ear; fallback = swing direction
+  function facing(kp, vx) { const e = kp[3][2] > kp[4][2] ? kp[3] : kp[4]; return kp[0][2] > .3 && e[2] > .3 && Math.abs(kp[0][0] - e[0]) > 2 ? Math.sign(kp[0][0] - e[0]) : Math.sign(vx || 1); }
   function bandFor(def, shot, H = 1.8) { const v = def.band, b = Array.isArray(v) ? v : (v[shot] || v.default || [-Infinity, Infinity]); return def.relHeight ? [+(b[0] * H).toFixed(2), +(b[1] * H).toFixed(2)] : b; }
 
   function runChecks(defs, metrics, shot, c, H) {
@@ -72,7 +74,7 @@
         strokeCount: count,
         tempoS: +(pk.t - st.tStart).toFixed(3),
         contactHeightM: +((ground - kp[d.w][1]) / pxM).toFixed(2),
-        contactAheadM: +(((kp[d.w][0] - hip[0]) * Math.sign(pk.vx || 1)) / pxM).toFixed(2),
+        contactAheadM: +(((kp[d.w][0] - hip[0]) * facing(kp, pk.vx)) / pxM).toFixed(2),
         elbowAngleContactDeg: Math.round(angle(kp[d.s], kp[d.e], kp[d.w]) ?? NaN) || null,
         kneeAngleLoadDeg: knee === null ? null : Math.round(knee),
         wristSpeedPeak: +pk.v.toFixed(2),

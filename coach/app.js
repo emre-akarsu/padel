@@ -125,10 +125,15 @@ function draw(r, t) {
   if (L.ghostOn && L.lastFit && L.mode === 'shadow') {
     const spec = PadelGhost.specs.shots[S.shot], period = spec.durationS * 2 + 1; // half speed + 1 s pause
     let u = r.phase && r.phase.progress != null && r.phase.id !== 'ready' ? r.phase.progress : Math.min(1, ((t % period) / (spec.durationS * 2)));
-    const g = PadelGhost.place(PadelGhost.pose(S.shot, u), L.lastFit.anchor, L.lastFit.scale, L.lastFit.facing, S.hand === 'left');
-    PadelGhost.draw(octx, g, { color: '#5fb07a', alpha: .55, width: s * 2.4 });
+    drawGhost(octx, S.shot, u, L.lastFit, s * 2.4);
     const sub = $('#sub'); sub.hidden = false; sub.textContent = 'Coach: ' + PadelGhost.labelAt(S.shot, u);
   } else $('#sub').hidden = true;
+}
+// Ghost coach: the Strike Player girl in 3D (ghost3d.js) when available, else the 2D stick ghost.
+function drawGhost(ctx, shot, u, fit, width) {
+  const lh = S.hand === 'left';
+  if (window.PadelGhost3D?.ready && window.PadelGhost3D.draw(ctx, shot, u, fit, { alpha: .6, leftHanded: lh })) return;
+  PadelGhost.draw(ctx, PadelGhost.place(PadelGhost.pose(shot, u), fit.anchor, fit.scale, fit.facing, lh), { color: '#5fb07a', alpha: .55, width });
 }
 function facingOf(kp) { // nose ahead of ears => facing that way; fall back to +x
   const ear = (kp[3][2] > kp[4][2] ? kp[3] : kp[4]); return kp[0][2] > .3 && ear[2] > .3 ? Math.sign(kp[0][0] - ear[0]) || 1 : 1;
@@ -217,7 +222,7 @@ function drawReplay(t) {
     const spec = PadelGhost.specs.shots[s.shot?.id || S.shot], fit = PadelGhost.fitTo(kp);
     if (spec && fit) {
       const cu = spec.contactU, u = t < s.tContact ? cu * (t - s.tStart) / Math.max(.05, s.tContact - s.tStart) : cu + (1 - cu) * (t - s.tContact) / Math.max(.05, s.tEnd - s.tContact);
-      PadelGhost.draw(rctx, PadelGhost.place(PadelGhost.pose(s.shot?.id || S.shot, u), fit.anchor, fit.scale, facingOf(kp), S.hand === 'left'), { color: '#5fb07a', alpha: .5, width: lw * 2.2 });
+      fit.facing = facingOf(kp); drawGhost(rctx, s.shot?.id || S.shot, u, fit, lw * 2.2);
     }
     PadelGhost.draw(rctx, kp, { width: lw * 1.4 });
     if (Math.abs(t - s.tContact) < .04) { // contact line + label

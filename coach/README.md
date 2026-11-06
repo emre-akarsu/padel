@@ -100,7 +100,7 @@ node coach/tools/export_ghost.mjs <path to the padel site checkout>
 
 Then bump `V` in `sw.js`.
 
-`ghost.js` fits the frames to the player (hip-mid anchor, torso-length scale, facing from nose vs ear). In replay it is time-warped so the ghost's contact lands on the player's contact. Shot ids follow the app (`forehand_drive` → `forehand`, `globo` → `lob`, volleys → `volley_fh`/`volley_bh`). The rest keep their Strike ids. Hand-set angle `keys` (the old format) still work for shots that have no frames.
+The ghost you see is the **Strike Player girl in 3D** (`ghost3d.js`). It loads `../strikes/assets/player.glb`, the specs and `solver.js` directly from the Strike Player and renders them with three.js 0.160 from the side-fence view (orthographic, 60% opacity). It is fitted to the player the same way. If WebGL or the assets fail, the app falls back to the 2D stick ghost from these frames. `ghost.js` fits the frames to the player (hip-mid anchor, torso-length scale, facing from nose vs ear). In replay it is time-warped so the ghost's contact lands on the player's contact. Shot ids follow the app (`forehand_drive` → `forehand`, `globo` → `lob`, volleys → `volley_fh`/`volley_bh`). The rest keep their Strike ids. Hand-set angle `keys` (the old format) still work for shots that have no frames.
 
 The wrist-height band for each shot (`release.json` → `contact_low`, `relHeight: true` = fractions of the player's height) is the Strike reference wrist height at contact ± 0.09 H. These bands are placeholders until pro footage replaces them.
 
