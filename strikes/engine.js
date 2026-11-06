@@ -157,7 +157,7 @@ function phaseAt(t) {
   return k;
 }
 function frame(i) {
-  const c = state.comp; const [t, spd, part] = state.table[i];
+  const c = state.comp; const [t, spd, part] = state.table[Math.min(state.table.length - 1, Math.max(0, i | 0))];
   const res = c.solve(t); applyPose(res); if (tennisRacket.visible) placeRacket(res.racket);
   const f = (t - c.trail[0][0]) / (c.trail[c.trail.length - 1][0] - c.trail[0][0]);
   trailObj.visible = state.trail; trailObj.reveal(f);
@@ -193,7 +193,9 @@ function resize() { const r = stage.getBoundingClientRect(); renderer.setSize(r.
 new ResizeObserver(resize).observe(stage); resize();
 let last = performance.now(), acc = 0;
 renderer.setAnimationLoop((now) => {
-  const dt = Math.min(0.1, (now - last) / 1000); last = now;
-  if (state.playing) { acc += dt * 240; const steps = Math.floor(acc); acc -= steps; state.idx = (state.idx + steps) % state.table.length; }
+  const dt = Math.min(0.1, Math.max(0, (now - last) / 1000)); last = now;   // rAF time can precede performance.now()
+  const n = state.table.length;
+  if (state.playing) { acc += dt * 240; const steps = Math.floor(acc); acc -= steps; state.idx += steps; }
+  state.idx = ((state.idx % n) + n) % n;
   frame(state.idx); controls.update(); renderer.render(scene, camera);
 });
