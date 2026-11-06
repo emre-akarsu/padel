@@ -1,0 +1,263 @@
+{
+ "version": 2,
+ "updated": "2026-11-06",
+ "note": "Per-feature release gates. status: hidden | numbers (value + target band, no verdict) | suggest (coach-only draft in Review Inbox) | auto (spoken/subtitled cue). The app only shows a fault cue when status=auto AND precisionLB >= faultGate AND n >= minN; a 'looks good' cue needs goodStatus=auto AND goodPrecisionLB >= goodGate. precisionLB = Wilson 95% lower bound on fresh phone footage.",
+ "gates": {
+  "faultGate": 0.85,
+  "goodGate": 0.95,
+  "minN": 60
+ },
+ "features": {
+  "stroke_count": {
+   "status": "numbers",
+   "precisionLB": null,
+   "recallLB": null,
+   "approxUntilGate": 0.85
+  },
+  "phase_labels": {
+   "status": "numbers",
+   "accuracy": 0.47,
+   "approx": true
+  },
+  "shot_type_free_play": {
+   "status": "hidden",
+   "accuracy": 0.44
+  },
+  "ghost_coach": {
+   "status": "auto",
+   "source": "Strike Player v5 specs/padel.json (13 strokes) exported by export_ghost.mjs"
+  }
+ },
+ "checks": [
+  {
+   "id": "contact_low",
+   "phase": "E1",
+   "label": "Wrist height at contact",
+   "metric": "contactHeightM",
+   "unit": "m",
+   "view": "side",
+   "band": {
+    "bandeja": [
+     0.92,
+     1.1
+    ],
+    "vibora": [
+     0.88,
+     1.06
+    ],
+    "smash": [
+     0.91,
+     1.09
+    ],
+    "smash_x3": [
+     0.91,
+     1.09
+    ],
+    "bajada": [
+     0.81,
+     0.99
+    ],
+    "forehand": [
+     0.48,
+     0.66
+    ],
+    "backhand": [
+     0.51,
+     0.69
+    ],
+    "volley_fh": [
+     0.58,
+     0.76
+    ],
+    "volley_bh": [
+     0.59,
+     0.77
+    ],
+    "lob": [
+     0.44,
+     0.62
+    ],
+    "chiquita": [
+     0.42,
+     0.6
+    ],
+    "salida_de_pared": [
+     0.46,
+     0.64
+    ],
+    "serve": [
+     0.43,
+     0.61
+    ],
+    "default": [
+     0,
+     1.5
+    ]
+   },
+   "cue": "Contact too low",
+   "goodCue": "Good contact height",
+   "status": "numbers",
+   "precisionLB": null,
+   "n": 0,
+   "goodStatus": "hidden",
+   "goodPrecisionLB": null,
+   "relHeight": true,
+   "bandSource": "fraction of player height; Strike Player v5 reference wrist at contact +-0.09 H; replace with pro footage"
+  },
+  {
+   "id": "contact_behind",
+   "phase": "E1",
+   "label": "Contact in front",
+   "metric": "contactAheadM",
+   "unit": "m",
+   "view": "side",
+   "shots": [
+    "bandeja",
+    "vibora",
+    "smash",
+    "smash_x3",
+    "bajada",
+    "forehand",
+    "backhand",
+    "volley_fh",
+    "volley_bh"
+   ],
+   "band": {
+    "default": [
+     0.0,
+     0.6
+    ]
+   },
+   "cue": "Contact behind the body",
+   "goodCue": "Contact in front, good",
+   "status": "numbers",
+   "precisionLB": null,
+   "n": 0,
+   "goodStatus": "hidden",
+   "goodPrecisionLB": null
+  },
+  {
+   "id": "elbow_contact",
+   "phase": "E2",
+   "label": "Elbow at contact",
+   "metric": "elbowAngleContactDeg",
+   "unit": "deg",
+   "view": "side",
+   "band": {
+    "bandeja": [
+     140,
+     180
+    ],
+    "smash": [
+     150,
+     180
+    ],
+    "default": [
+     110,
+     180
+    ]
+   },
+   "cue": "Extend the arm at contact",
+   "goodCue": "Arm extended, good",
+   "status": "numbers",
+   "precisionLB": null,
+   "n": 0,
+   "goodStatus": "hidden",
+   "goodPrecisionLB": null
+  },
+  {
+   "id": "knee_load",
+   "phase": "E2",
+   "label": "Knee bend at load",
+   "metric": "kneeAngleLoadDeg",
+   "unit": "deg",
+   "view": "side",
+   "band": {
+    "default": [
+     110,
+     160
+    ]
+   },
+   "cue": "Bend the knees more",
+   "goodCue": "Good knee bend",
+   "status": "numbers",
+   "precisionLB": null,
+   "n": 0,
+   "goodStatus": "hidden",
+   "goodPrecisionLB": null
+  },
+  {
+   "id": "free_arm_up",
+   "phase": "E2",
+   "label": "Free arm up",
+   "metric": "freeArmUp",
+   "unit": "bool",
+   "view": "side",
+   "shots": [
+    "bandeja",
+    "vibora",
+    "smash"
+   ],
+   "band": {
+    "default": [
+     1,
+     1
+    ]
+   },
+   "cue": "Lift the free arm",
+   "goodCue": "Free arm up, good",
+   "status": "numbers",
+   "precisionLB": null,
+   "n": 0,
+   "goodStatus": "hidden",
+   "goodPrecisionLB": null
+  },
+  {
+   "id": "racket_up_early",
+   "phase": "E2",
+   "label": "Racket up early",
+   "metric": "racketUpEarly",
+   "unit": "bool",
+   "view": "side",
+   "shots": [
+    "bandeja",
+    "vibora",
+    "smash"
+   ],
+   "band": {
+    "default": [
+     1,
+     1
+    ]
+   },
+   "cue": "Racket up earlier",
+   "goodCue": "Racket up early, good",
+   "status": "numbers",
+   "precisionLB": null,
+   "n": 0,
+   "goodStatus": "hidden",
+   "goodPrecisionLB": null
+  },
+  {
+   "id": "tempo",
+   "phase": "E3",
+   "label": "Tempo (prep to contact)",
+   "metric": "tempoS",
+   "unit": "s",
+   "view": "side",
+   "band": {
+    "default": [
+     0.6,
+     1.3
+    ]
+   },
+   "cue": "Prepare earlier",
+   "goodCue": "Good timing",
+   "status": "numbers",
+   "precisionLB": null,
+   "n": 0,
+   "goodStatus": "hidden",
+   "goodPrecisionLB": null
+  }
+ ]
+}

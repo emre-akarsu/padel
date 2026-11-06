@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Feasibility Test</title><link rel="icon" href="icon.svg">
+<style>
+:root{--bg:#eef2f5;--surface:#fff;--ink:#14212b;--muted:#5a6b78;--line:#d3dce3;--ok:#2f6b45;--bad:#b5651d}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e161d;--surface:#16222c;--ink:#e5edf2;--muted:#93a6b4;--line:#26343f;--ok:#5fb07a;--bad:#e0a060;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0e161d;--surface:#16222c;--ink:#e5edf2;--muted:#93a6b4;--line:#26343f;--ok:#5fb07a;--bad:#e0a060;color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.45 system-ui,sans-serif}
+.page{max-width:900px;margin:0 auto;padding:max(12px,env(safe-area-inset-top)) 16px 32px}
+.bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.grow{flex:1}
+.btn,select,input{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:999px;padding:8px 14px;min-height:40px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:12px;padding:12px;margin:10px 0}
+.view{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:16/9}.view video,.view canvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+.kpi{display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:8px}.kpi div{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:8px}.kpi b{display:block;font-size:20px;font-variant-numeric:tabular-nums}.kpi span{font-size:12px;color:var(--muted)}
+table{width:100%;border-collapse:collapse;font-size:13px;font-variant-numeric:tabular-nums}td,th{border-bottom:1px solid var(--line);padding:4px;text-align:right}th:first-child,td:first-child{text-align:left}
+.ok{color:var(--ok)}.bad{color:var(--bad)}.muted{color:var(--muted);font-size:13px}.scroll{overflow-x:auto}
+</style></head><body><main class="page">
+<div class="bar"><a class="btn" href="./" style="text-decoration:none">Back</a><h1 class="grow" style="font-size:22px;margin:0">Feasibility test</h1></div>
+<p class="muted">One-day test from the AR plan: camera → pose → skeleton for 30 min. Logs fps, p50/p95 inference, frame time, dropped frames, battery and CPU pressure every 10 s. Pass: ≥20 fps sustained, p95 frame ≤50 ms, battery ≤25% per 30 min. Tripod at side view ~6 m, screen on, someone swinging.</p>
+<div class="card bar">
+  <label>Engine <select id="eng"><option value="onnx">onnx (RTMPose-s)</option><option value="mock">mock</option></select></label>
+  <label>Backend <select id="prov"><option value="webgpu">WebGPU</option><option value="wasm">WASM</option></select></label>
+  <label>Minutes <input id="mins" type="number" value="30" min="1" max="120" style="width:80px"></label>
+  <label>Request cam fps <select id="camfps"><option>120</option><option>60</option><option>30</option><option>240</option></select></label>
+  <button class="btn" id="go" style="background:var(--ok);color:#fff;border-color:var(--ok)">Start</button><button class="btn" id="stop" disabled>Stop</button><button class="btn" id="csv" disabled>Download CSV</button>
+</div>
+<div class="view"><video id="v" playsinline muted autoplay></video><canvas id="c"></canvas></div>
+<div class="kpi card" id="kpi"></div>
+<div class="card" id="verdict"><span class="muted">Not started.</span></div>
+<div class="card scroll"><table id="tbl"><thead><tr><th>t (s)</th><th>fps</th><th>p50 ms</th><th>p95 ms</th><th>p95 frame</th><th>dropped</th><th>cam fps</th><th>battery</th><th>cpu</th></tr></thead><tbody></tbody></table></div>
+<p class="muted">iOS exposes no thermal state or battery to web pages; a falling fps over time is the throttling signal. Device: <span id="ua"></span></p>
+</main>
+<script src="engine/core.js"></script><script src="ghost.js"></script><script src="engine/mock.js"></script><script src="engine/onnx.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s), v = $('#v'), c = $('#c'), ctx = c.getContext('2d');
+$('#ua').textContent = navigator.userAgent + ' · cores ' + (navigator.hardwareConcurrency || '?') + ' · WebGPU ' + (!!navigator.gpu);
+let B = null; const rows = [];
+const pct = (a, p) => { if (!a.length) return null; const s = [...a].sort((x, y) => x - y); return s[Math.min(s.length - 1, Math.floor(p * s.length))]; };
+async function battery() { try { const b = await navigator.getBattery(); return b; } catch { return null; } }
+$('#go').onclick = async () => {
+  $('#go').disabled = true; $('#verdict').innerHTML = '<span class="muted">Loading model and camera...</span>';
+  try {
+    await PadelGhost.load();
+    const eng = PadelEngines.create($('#eng').value, { mode: 'bench', shot: 'bandeja', provider: $('#prov').value });
+    const t0 = performance.now(); await eng.init({ mode: 'bench', shot: 'bandeja', provider: $('#prov').value }); const loadMs = performance.now() - t0;
+    const fpsReq = +$('#camfps').value;
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: fpsReq } } });
+    v.srcObject = stream; await v.play(); await new Promise(r => v.videoWidth ? r() : v.onloadedmetadata = r);
+    c.width = v.videoWidth; c.height = v.videoHeight;
+    const st = stream.getVideoTracks()[0].getSettings();
+    B = { eng, stream, start: performance.now(), end: performance.now() + $('#mins').value * 60000, inf: [], frames: [], dropped: 0, camN: 0, busy: false, idx: 0, last: null, loadMs, camReq: fpsReq, camSet: st.frameRate, bat: await battery(), bat0: null, cpu: 'n/a', on: true };
+    if (B.bat) B.bat0 = B.bat.level;
+    if ('PressureObserver' in window) try { B.po = new PressureObserver(r => B.cpu = r[r.length - 1].state); await B.po.observe('cpu', { sampleInterval: 2000 }); } catch { }
+    try { B.wake = await navigator.wakeLock?.request('screen'); } catch { }
+    rows.length = 0; $('#tbl tbody').innerHTML = ''; $('#stop').disabled = false; $('#csv').disabled = false;
+    $('#verdict').innerHTML = `<span class="muted">Running. Model load ${loadMs.toFixed(0)} ms. Camera asked ${fpsReq} fps, got ${st.frameRate ? st.frameRate.toFixed(0) : '?'} fps at ${st.width}x${st.height}.</span>`;
+    const tick = (now) => {
+      if (!B.on) return; v.requestVideoFrameCallback ? v.requestVideoFrameCallback(tick) : requestAnimationFrame(tick);
+      B.camN++;
+      if (B.busy) { B.dropped++; return; }
+      B.busy = true; const a = performance.now();
+      eng.processFrame({ image: v, width: v.videoWidth, height: v.videoHeight, t: a / 1000, index: B.idx++ }).then(r => {
+        const e = performance.now(); B.inf.push(r.timing.inferenceMs); if (B.last) B.frames.push(e - B.last); B.last = e;
+        ctx.clearRect(0, 0, c.width, c.height); PadelGhost.draw(ctx, r.skeleton, { width: Math.max(2, c.height / 180) });
+      }).catch(err => { B.err = err.message; }).finally(() => B.busy = false);
+    };
+    v.requestVideoFrameCallback ? v.requestVideoFrameCallback(tick) : requestAnimationFrame(tick);
+    B.timer = setInterval(log, 10000); B.kpiT = setInterval(kpi, 1000);
+  } catch (e) { $('#verdict').innerHTML = `<span class="bad">Error: ${e.message}</span>`; $('#go').disabled = false; }
+};
+function windowStats() { const n = B.frames.length, span = B.frames.reduce((a, b) => a + b, 0) / 1000; return { fps: span ? n / span : 0, p50: pct(B.inf, .5), p95: pct(B.inf, .95), fp95: pct(B.frames, .95), cam: B.camN / 10 }; }
+function kpi() {
+  const w = windowStats(), el = (performance.now() - B.start) / 1000;
+  $('#kpi').innerHTML = [['elapsed', `${Math.floor(el / 60)}:${String(Math.floor(el % 60)).padStart(2, '0')}`], ['fps (window)', w.fps.toFixed(1)], ['p50 inference', (w.p50 ?? 0).toFixed(1) + ' ms'], ['p95 inference', (w.p95 ?? 0).toFixed(1) + ' ms'], ['p95 frame', (w.fp95 ?? 0).toFixed(1) + ' ms'], ['dropped', B.dropped], ['battery', B.bat ? Math.round(B.bat.level * 100) + '%' + (B.bat.charging ? ' ⚡' : '') : 'n/a'], ['cpu pressure', B.cpu], ['engine', B.eng.info.name]].map(([k, v]) => `<div><b>${v}</b><span>${k}</span></div>`).join('') + (B.err ? `<div class="bad">${B.err}</div>` : '');
+  if (performance.now() > B.end) stop();
+}
+function log() {
+  const w = windowStats(), r = { t: Math.round((performance.now() - B.start) / 1000), fps: +w.fps.toFixed(2), p50: +(w.p50 ?? 0).toFixed(1), p95: +(w.p95 ?? 0).toFixed(1), frame_p95: +(w.fp95 ?? 0).toFixed(1), dropped: B.dropped, cam_fps: +w.cam.toFixed(1), battery: B.bat ? +(B.bat.level * 100).toFixed(0) : '', charging: B.bat ? B.bat.charging : '', cpu: B.cpu, heap_mb: performance.memory ? +(performance.memory.usedJSHeapSize / 1e6).toFixed(0) : '' };
+  rows.push(r); B.inf = []; B.frames = []; B.dropped = 0; B.camN = 0;
+  $('#tbl tbody').insertAdjacentHTML('afterbegin', `<tr><td>${r.t}</td><td class="${r.fps >= 20 ? 'ok' : 'bad'}">${r.fps}</td><td>${r.p50}</td><td>${r.p95}</td><td class="${r.frame_p95 <= 50 ? 'ok' : 'bad'}">${r.frame_p95}</td><td>${r.dropped}</td><td>${r.cam_fps}</td><td>${r.battery}</td><td>${r.cpu}</td></tr>`);
+  try { localStorage.setItem('padel.bench.last', JSON.stringify({ ua: navigator.userAgent, engine: B.eng.info.name, rows })); } catch { }
+}
+function stop() {
+  if (!B || !B.on) return; B.on = false; clearInterval(B.timer); clearInterval(B.kpiT); log();
+  B.stream.getTracks().forEach(t => t.stop()); B.wake?.release?.(); B.po?.disconnect?.();
+  const mins = rows.length ? rows[rows.length - 1].t / 60 : 0, minFps = Math.min(...rows.map(r => r.fps)), worstP95 = Math.max(...rows.map(r => r.frame_p95));
+  const drop = B.bat && B.bat0 != null ? (B.bat0 - B.bat.level) * 100 : null, per30 = drop != null && mins ? drop * 30 / mins : null;
+  const pass = [minFps >= 20, worstP95 <= 50, per30 == null || per30 <= 25, mins >= 29];
+  $('#verdict').innerHTML = `<b class="${pass.every(Boolean) ? 'ok' : 'bad'}">${pass.every(Boolean) ? 'PASS' : 'FAIL'}</b> · ${mins.toFixed(1)} min · min window fps ${minFps.toFixed(1)} (≥20) · worst p95 frame ${worstP95.toFixed(0)} ms (≤50) · battery ${per30 == null ? 'n/a' : per30.toFixed(0) + '% per 30 min'} (≤25) · camera asked ${B.camReq}, got ${B.camSet ?? '?'} fps${mins < 29 ? ' · run was shorter than 30 min' : ''}`;
+  $('#stop').disabled = true; $('#go').disabled = false;
+}
+$('#stop').onclick = stop;
+$('#csv').onclick = () => {
+  const k = Object.keys(rows[0] || { t: 0 }), head = `# ${navigator.userAgent.replace(/,/g, ' ')} | engine ${B?.eng.info.name} | cam asked ${B?.camReq} got ${B?.camSet}\n`;
+  const csv = head + k.join(',') + '\n' + rows.map(r => k.map(x => r[x]).join(',')).join('\n');
+  const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'padel_bench_' + new Date().toISOString().slice(0, 16).replace(/:/g, '') + '.csv'; a.click();
+};
+</script></body></html>
