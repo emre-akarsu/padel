@@ -13,7 +13,7 @@
 
   function createOnnx(init) {
     let o = Object.assign({ mode: 'drill', shot: 'bandeja', view: 'side', playerHeightM: 1.8, handedness: 'right', checks: [],
-      poseUrl: 'models/rtmpose-s.onnx', detUrl: '', detEvery: 5, provider: 'webgpu' }, init);
+      poseUrl: '../coach/models/rtmpose-s.onnx', detUrl: '', detEvery: 5, provider: 'webgpu' }, init);
     let pose = null, det = null, an = null, box = null, n = 0, tap = null, persons = [], ep = null;
     const cv = document.createElement('canvas'); cv.width = PW; cv.height = PH; const cx = cv.getContext('2d', { willReadFrequently: true });
     const dv = document.createElement('canvas'); dv.width = dv.height = DS; const dx = dv.getContext('2d', { willReadFrequently: true });
