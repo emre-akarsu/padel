@@ -20,7 +20,7 @@ function gate(id) {
   if (!d) return { show: false };
   return { def: d, show: d.status !== 'hidden', fault: d.status === 'auto' && (d.precisionLB ?? 0) >= g.faultGate && d.n >= g.minN, good: d.goodStatus === 'auto' && (d.goodPrecisionLB ?? 0) >= g.goodGate && d.n >= g.minN };
 }
-const band = (id, shot) => { const g = gate(id); if (!g.def) return null; const b = g.def.band; return b[shot] || b.default; };
+const band = (id, shot) => { const g = gate(id); return g.def ? PadelCore.bandFor(g.def, shot, +S.height) : null; };
 const countTxt = n => (REL.features.stroke_count.precisionLB ?? 0) >= REL.features.stroke_count.approxUntilGate ? String(n) : '≈' + n;
 
 /* ---------- engine ---------- */
@@ -127,7 +127,7 @@ function draw(r, t) {
     let u = r.phase && r.phase.progress != null && r.phase.id !== 'ready' ? r.phase.progress : Math.min(1, ((t % period) / (spec.durationS * 2)));
     const g = PadelGhost.place(PadelGhost.pose(S.shot, u), L.lastFit.anchor, L.lastFit.scale, L.lastFit.facing, S.hand === 'left');
     PadelGhost.draw(octx, g, { color: '#5fb07a', alpha: .55, width: s * 2.4 });
-    const sub = $('#sub'); sub.hidden = false; sub.textContent = 'Coach: ' + PH_NAME[PadelGhost.phaseAt(S.shot, u)];
+    const sub = $('#sub'); sub.hidden = false; sub.textContent = 'Coach: ' + PadelGhost.labelAt(S.shot, u);
   } else $('#sub').hidden = true;
 }
 function facingOf(kp) { // nose ahead of ears => facing that way; fall back to +x

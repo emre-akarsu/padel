@@ -33,11 +33,11 @@
   const conf = (kp, ids) => ids.reduce((s, i) => s + kp[i][2], 0) / ids.length;
   const emptyMetrics = n => ({ strokeCount: n, tempoS: null, contactHeightM: null, contactAheadM: null, elbowAngleContactDeg: null, kneeAngleLoadDeg: null, wristSpeedPeak: null });
 
-  function bandFor(def, shot) { const b = def.band; return Array.isArray(b) ? b : (b[shot] || b.default || [-Infinity, Infinity]); }
+  function bandFor(def, shot, H = 1.8) { const v = def.band, b = Array.isArray(v) ? v : (v[shot] || v.default || [-Infinity, Infinity]); return def.relHeight ? [+(b[0] * H).toFixed(2), +(b[1] * H).toFixed(2)] : b; }
 
-  function runChecks(defs, metrics, shot, c) {
+  function runChecks(defs, metrics, shot, c, H) {
     return (defs || []).filter(d => !d.shots || !shot || d.shots.includes(shot)).map(d => {
-      const v = metrics[d.metric]; const band = bandFor(d, shot);
+      const v = metrics[d.metric]; const band = bandFor(d, shot, H);
       const abstain = v === null || v === undefined || c < 0.3;
       return { id: d.id, value: abstain ? null : v, unit: d.unit, band, pass: abstain ? null : (v >= band[0] && v <= band[1]), confidence: abstain ? 0 : c };
     });
@@ -46,7 +46,7 @@
   /** createAnalyzer(opts) -> { update(t, kps, w, h) -> partial FrameResult, reset(), configure() }
    *  opts: playerHeightM, handedness, shot, checks (release.json checks), hi/lo thresholds (body heights / s) */
   function createAnalyzer(opts) {
-    let o = Object.assign({ playerHeightM: 1.8, handedness: 'right', shot: null, checks: [], hi: 1.0, lo: 0.35, quietS: 0.18, maxS: 2.5, expectS: 1.4 }, opts);
+    let o = Object.assign({ playerHeightM: 1.8, handedness: 'right', shot: null, checks: [], hi: 0.8, lo: 0.3, quietS: 0.18, mergeS: 0.9, maxS: 3.5, expectS: 1.4 }, opts);
     let filt = [], hist = [], bodyPx = null, state = 'idle', st = null, count = 0, last = emptyMetrics(0), lastV = 0, lastQuietT = 0, seq = 0;
     const dom = () => o.handedness === 'left' ? { w: K.lw, s: K.ls, e: K.le, ow: K.rw, os: K.rs } : { w: K.rw, s: K.rs, e: K.re, ow: K.lw, os: K.ls };
 
@@ -57,7 +57,7 @@
     function frameAt(t) { let best = hist[0]; for (const h of hist) if (Math.abs(h.t - t) < Math.abs(best.t - t)) best = h; return best; }
 
     function finish(tEnd) {
-      const d = dom(), OVER = ['bandeja', 'vibora', 'smash', 'serve'];
+      const d = dom(), OVER = ['bandeja', 'vibora', 'smash', 'smash_x3', 'bajada', 'serve'];
       if (OVER.includes(o.shot)) { // overheads: contact = highest racket wrist near the speed peak
         for (const h of hist) if (h.t >= st.peak.t - .25 && h.t <= st.peak.t + .1 && h.kp[d.w][1] < st.peak.kp[d.w][1]) st.peak = { t: h.t, v: st.peak.v, vx: h.vx, kp: h.kp };
       }
@@ -83,7 +83,7 @@
       const cut = [a, a + .4 * L, a + .75 * L, c - .03, c + .03, c + .6 * R, b];
       const phases = PHASES.slice(1).map((id, i) => ({ id, tStart: +cut[i].toFixed(3), tEnd: +cut[i + 1].toFixed(3) }));
       const c0 = conf(kp, [d.s, d.e, d.w, K.la, K.ra, K.nose]);
-      const checks = runChecks(o.checks, m, o.shot, c0);
+      const checks = runChecks(o.checks, m, o.shot, c0, o.playerHeightM);
       last = m;
       return {
         id: 's' + Date.now().toString(36) + (seq++), tStart: a, tContact: c, tEnd: b,
@@ -114,18 +114,22 @@
         out.skeleton = kp;
         if (state === 'idle') {
           if (v < o.lo) lastQuietT = t;
-          if (v > o.hi) { state = 'active'; st = { tStart: lastQuietT, peak: { t, v, vx, kp }, quietSince: null }; }
-        } else {
+          if (v > o.hi) { state = 'active'; st = { tStart: lastQuietT, segs: [], peak: { t, v, vx, kp }, quietSince: null }; }
+        } else if (state === 'active') {
           if (v > st.peak.v) st.peak = { t, v, vx, kp };
           st.quietSince = v < o.lo ? (st.quietSince ?? t) : null;
-          if ((st.quietSince !== null && t - st.quietSince >= o.quietS) || t - st.tStart > o.maxS) {
-            const s = finish(t); out.strokes.push(s); out.checks = s.checks; state = 'idle'; lastQuietT = t; st = null;
+          if ((st.quietSince !== null && t - st.quietSince >= o.quietS) || t - st.tStart > o.maxS) { st.segs.push(st.peak); st.endT = t; state = 'pending'; }
+        } else { // pending: a pause (e.g. prep then swing) within mergeS continues the same stroke
+          if (v > o.hi && t - st.endT < o.mergeS && t - st.tStart < o.maxS) { state = 'active'; st.peak = { t, v, vx, kp }; st.quietSince = null; }
+          else if (t - st.endT >= o.mergeS || t - st.tStart > o.maxS) {
+            const mx = Math.max(...st.segs.map(p => p.v)); st.peak = st.segs.filter(p => p.v >= .6 * mx).pop(); // swing = last strong segment
+            const s = finish(st.endT); out.strokes.push(s); out.checks = s.checks; state = 'idle'; lastQuietT = t; st = null;
           }
         }
         out.metrics = last;
         if (state === 'idle') out.phase = { id: 'ready', progress: null, confidence: .6, approx: true };
         else {
-          const pre = t <= st.peak.t + 0.02;
+          const pre = state === 'active' && t <= st.peak.t + 0.02;
           out.phase = { id: pre ? (v > 2 * o.hi ? 'forward_swing' : 'preparation') : 'follow_through', progress: Math.min(1, (t - st.tStart) / o.expectS), confidence: .4, approx: true };
         }
         return out;
@@ -152,5 +156,5 @@
     return { engine: engine.info, durationS: v.duration, fps, width: v.videoWidth, height: v.videoHeight, strokes, track };
   }
 
-  window.PadelCore = { K, PHASES, OneEuro, angle, createAnalyzer, runChecks, analyzeVideoByFrames, emptyMetrics };
+  window.PadelCore = { K, PHASES, OneEuro, angle, createAnalyzer, runChecks, analyzeVideoByFrames, emptyMetrics, bandFor };
 })();

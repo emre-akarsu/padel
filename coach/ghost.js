@@ -42,6 +42,7 @@
     for (const f of FIELDS) k[f] = a[f] + (b[f] - a[f]) * t;
     return fk(k);
   }
+  function labelAt(shot, u) { const s = SPECS && SPECS.shots[shot]; if (!s || !s.keys) return null; let p = s.keys[0]; for (const k of s.keys) if (k.u <= u + 1e-6) p = k; return p.label || p.phase; }
   function phaseAt(shot, u) { const s = SPECS && SPECS.shots[shot]; if (!s || !s.keys) return null; let p = s.keys[0].phase; for (const k of s.keys) if (k.u <= u + 1e-6) p = k.phase; return p; }
 
   /** Map torso-unit pose to pixels: anchor = hip mid px, scale = torso length px, facing = +1/-1, mirrorLR swaps handedness. */
@@ -70,5 +71,5 @@
     ctx.restore();
   }
 
-  window.PadelGhost = { load, pose, phaseAt, place, fitTo, draw, BONES, get specs() { return SPECS; } };
+  window.PadelGhost = { load, pose, phaseAt, labelAt, place, fitTo, draw, BONES, get specs() { return SPECS; } };
 })();

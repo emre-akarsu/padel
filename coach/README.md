@@ -90,9 +90,19 @@ GET  /v1/jobs/{jobId}         -> { "status": "queued"|"running"|"done"|"error", 
 
 ## Ghost coach / technique specs
 
-`techniques.json` currently holds **placeholder** 2D keyframes. Each key gives joint angles at a stroke time `u` (0 to 1), plus `contactU`. `ghost.js` turns them into COCO-17 poses with 2D forward kinematics, then fits the pose to the player (hip-mid anchor, torso-length scale, facing from nose vs ear). In replay, the ghost is time-warped so its contact matches the player's contact.
+`techniques.json` is generated from the **Strike Player v5** specs (`/padel/strikes/specs/padel.json`, 13 padel strokes). `tools/export_ghost.mjs` runs the Strike Player's own `solver.js` (same IK and C2 splines), samples 72 frames per stroke, and projects them orthographically from the side-fence view. That view is the player's right side, with image x = toward the net. The frames are stored as COCO-17 `frames` in torso units (hip-mid origin, y down, right-handed), along with `durationS`, `contactU` and phase `keys` (`phase`, `label`, `cue`).
 
-The multi-strike engine can replace a shot with a baked clip. Use `"frames": [[[x, y] x17], ...]` in torso units (hip-mid origin, y down, facing +x, right-handed), with the same `name`, `durationS`, `contactU` and `keys[].phase` (for subtitles). No code change is needed.
+Regenerate after the specs change:
+
+```
+node coach/tools/export_ghost.mjs <path to the padel site checkout>
+```
+
+Then bump `V` in `sw.js`.
+
+`ghost.js` fits the frames to the player (hip-mid anchor, torso-length scale, facing from nose vs ear). In replay it is time-warped so the ghost's contact lands on the player's contact. Shot ids follow the app (`forehand_drive` → `forehand`, `globo` → `lob`, volleys → `volley_fh`/`volley_bh`). The rest keep their Strike ids. Hand-set angle `keys` (the old format) still work for shots that have no frames.
+
+The wrist-height band for each shot (`release.json` → `contact_low`, `relHeight: true` = fractions of the player's height) is the Strike reference wrist height at contact ± 0.09 H. These bands are placeholders until pro footage replaces them.
 
 ## Coach label export (`padel.coach_labels.v1`)
 
@@ -108,7 +118,7 @@ The multi-strike engine can replace a shot with a baked clip. Use `"frames": [[[
 ## Known limits
 
 - Contact is the racket-wrist speed peak; for overheads it is the highest wrist point within -0.25 to +0.1 s of that peak. Stage cuts are fixed fractions around contact, which is why they are marked approx.
-- Contact height uses your height setting: pixels per metre = (ankle − nose) / (0.88 × height).
+- Contact height is the racket-hand wrist height (not the ball). It uses your height setting: pixels per metre = (ankle − nose) / (0.88 × height).
 - The web camera usually tops out at 30 to 60 fps, and iOS has no exposure lock, thermal state or battery API. The bench page shows what the phone actually gives you.
 - Checked in headless Chromium (CPU WASM, no GPU): the full UI flow worked on the mock and onnx engines, and RTMPose-s keypoints matched a rendered bandeja clip. Real phone fps is still unmeasured: run the bench page on the phones.
 - RTMPose body7 weights: licence audit still pending (see Path to production, blocker 4).
