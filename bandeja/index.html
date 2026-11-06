@@ -1,4 +1,12 @@
-<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}</style><title>Bandeja Swing Coach</title>
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0;font:14px system-ui,-apple-system,sans-serif}img{max-width:100%}[hidden]{display:none!important}.real { display: grid; gap: 12px; }
+.real .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+@media (max-width: 820px) { .real .row { grid-template-columns: minmax(0, 1fr); } }
+.real video { width: 100%; max-width: 100%; border-radius: 10px; background: #000; display: block; aspect-ratio: 1080 / 1350; }
+.stills { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 6px; }
+@media (max-width: 600px) { .stills { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.stills a { display: grid; gap: 2px; text-decoration: none; color: var(--muted); font-size: 11px; text-align: center; }
+.stills img { border-radius: 6px; aspect-ratio: 1080 / 1350; object-fit: cover; width: 100%; }
+</style><title>Bandeja Swing Coach</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
@@ -75,6 +83,21 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 6vw, 
     <span class="tag">Illustration · not verified pose data</span>
   </header>
 
+  <section class="card real">
+    <h2>Realistic version</h2>
+    <div class="row">
+      <video controls playsinline preload="metadata" poster="real/stills/1_ready.png" src="real/bandeja_real_narrated.mp4"></video>
+      <div class="ar" style="display:grid;gap:10px">
+        <p class="say">A photoreal render of the same seven-stage bandeja, narrated stage by stage. Tap play for sound.</p>
+        <a class="btn primary" rel="ar" href="real/bandeja_real.usdz"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" width="1" height="1">Open realistic player in AR</a>
+        <p>The AR file is 12 MB, so give it a few seconds on mobile data. It uses simpler hair than the video, and has no voice.</p>
+        <p>Rendered in Blender Cycles. Body is a MakeHuman CC0 model with a generic face; the ponytail is rigid and the skirt has no cloth physics.</p>
+      </div>
+    </div>
+    <div class="stills"><a href="real/stills/1_ready.png"><img loading="lazy" src="real/stills/1_ready.png" alt="Ready stage, realistic render">1. Ready</a><a href="real/stills/2_preparation.png"><img loading="lazy" src="real/stills/2_preparation.png" alt="Prep stage, realistic render">2. Prep</a><a href="real/stills/3_backswing.png"><img loading="lazy" src="real/stills/3_backswing.png" alt="Back stage, realistic render">3. Back</a><a href="real/stills/4_forward_swing.png"><img loading="lazy" src="real/stills/4_forward_swing.png" alt="Swing stage, realistic render">4. Swing</a><a href="real/stills/5_contact.png"><img loading="lazy" src="real/stills/5_contact.png" alt="Contact stage, realistic render">5. Contact</a><a href="real/stills/6_follow_through.png"><img loading="lazy" src="real/stills/6_follow_through.png" alt="Follow stage, realistic render">6. Follow</a><a href="real/stills/7_recovery.png"><img loading="lazy" src="real/stills/7_recovery.png" alt="Recover stage, realistic render">7. Recover</a></div>
+  </section>
+
+  <h2 style="font-family:var(--display);font-size:28px;margin:8px 0 0">Interactive 3D walkthrough</h2>
   <div class="main">
     <div class="stage" id="stage">
       <canvas id="c" aria-label="3D player performing a bandeja"></canvas>
@@ -105,7 +128,7 @@ h1 { font-family: var(--display); font-weight: 700; font-size: clamp(30px, 6vw, 
       <section class="card ar">
         <h2 style="font-size:22px">See it in AR on iPhone</h2>
         <p>Tap the button in Safari to open AR Quick Look, then tap <b>AR</b> to place the player on your floor at life size. The swing loops three times slower than real speed, with a short hold on each stage. AR has no voice, so come back here for the spoken cues.</p>
-        <a class="btn primary" id="arlink" rel="ar" href="bandeja_ar.usdz"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" width="1" height="1">Open in AR</a>
+        <a class="btn" id="arlink" rel="ar" href="bandeja_ar.usdz"><img alt="" src="data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==" width="1" height="1">Open mannequin in AR</a>
       </section>
     </div>
   </div>
