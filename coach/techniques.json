@@ -1,0 +1,55 @@
+{
+  "version": 1,
+  "source": "placeholder: hand-set 2D keyframes. Replace with the multi-strike engine export (same schema, use `frames` for baked clips).",
+  "units": "angles in degrees from straight down, + = forward (toward the ball); torso length = 1; each key inherits missing fields from the previous key",
+  "shots": {
+    "bandeja": { "name": "Bandeja", "durationS": 1.6, "contactU": 0.58, "keys": [
+      { "u": 0,    "phase": "ready", "trunk": 5, "rot": 0.35, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -8, "lt": 12, "lk": -5 },
+      { "u": 0.2,  "phase": "preparation", "trunk": -5, "rs": 100, "re": 170, "ls": 100, "le": 140, "rt": -15, "rk": -25, "lt": 15 },
+      { "u": 0.4,  "phase": "backswing", "trunk": -12, "rs": 135, "re": 225, "ls": 150, "le": 165, "rt": -18, "rk": -30, "lt": 18, "lk": 0 },
+      { "u": 0.52, "phase": "forward_swing", "trunk": -3, "rs": 155, "re": 190, "ls": 90, "le": 70 },
+      { "u": 0.58, "phase": "contact", "trunk": 5, "rs": 150, "re": 140, "ls": 40, "le": 20 },
+      { "u": 0.78, "phase": "follow_through", "trunk": 12, "rs": 60, "re": 20, "ls": 15, "le": -10, "rt": -5, "rk": -15, "lt": 20 },
+      { "u": 1,    "phase": "recovery", "trunk": 5, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -8, "lt": 12, "lk": -5 } ] },
+    "vibora": { "name": "Vibora", "durationS": 1.5, "contactU": 0.57, "keys": [
+      { "u": 0,    "phase": "ready", "trunk": 5, "rot": 0.25, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -8, "lt": 12, "lk": -5 },
+      { "u": 0.2,  "phase": "preparation", "trunk": -8, "rs": 110, "re": 180, "ls": 110, "le": 150, "rt": -18, "rk": -28, "lt": 15 },
+      { "u": 0.4,  "phase": "backswing", "trunk": -15, "rs": 140, "re": 235, "ls": 150, "le": 170 },
+      { "u": 0.51, "phase": "forward_swing", "trunk": -2, "rs": 150, "re": 175, "ls": 80, "le": 60 },
+      { "u": 0.57, "phase": "contact", "trunk": 8, "rs": 140, "re": 120, "ls": 35, "le": 15 },
+      { "u": 0.78, "phase": "follow_through", "trunk": 18, "rs": 30, "re": -20, "ls": 10, "le": -15, "rt": -5, "rk": -12, "lt": 22 },
+      { "u": 1,    "phase": "recovery", "trunk": 5, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -8, "lt": 12, "lk": -5 } ] },
+    "smash": { "name": "Smash", "durationS": 1.5, "contactU": 0.56, "keys": [
+      { "u": 0,    "phase": "ready", "trunk": 5, "rot": 0.4, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -8, "lt": 12, "lk": -5 },
+      { "u": 0.2,  "phase": "preparation", "trunk": -10, "rs": 110, "re": 190, "ls": 120, "le": 160, "rt": -18, "rk": -35, "lt": 15 },
+      { "u": 0.4,  "phase": "backswing", "trunk": -18, "rs": 160, "re": 245, "ls": 160, "le": 175 },
+      { "u": 0.5,  "phase": "forward_swing", "trunk": -5, "rs": 175, "re": 210, "ls": 80, "le": 50 },
+      { "u": 0.56, "phase": "contact", "trunk": 8, "rs": 172, "re": 172, "ls": 30, "le": 10 },
+      { "u": 0.78, "phase": "follow_through", "trunk": 22, "rs": 30, "re": 0, "ls": 10, "le": -10, "rt": 0, "rk": -10, "lt": 25 },
+      { "u": 1,    "phase": "recovery", "trunk": 5, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -8, "lt": 12, "lk": -5 } ] },
+    "forehand": { "name": "Forehand", "durationS": 1.4, "contactU": 0.55, "keys": [
+      { "u": 0,    "phase": "ready", "trunk": 10, "rot": 0.3, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -12, "lt": 12, "lk": -8 },
+      { "u": 0.2,  "phase": "preparation", "trunk": 5, "rs": -10, "re": 30, "ls": 60, "le": 80 },
+      { "u": 0.4,  "phase": "backswing", "trunk": 5, "rs": -50, "re": -20, "ls": 80, "le": 90, "rt": -12, "rk": -28, "lt": 22, "lk": -5 },
+      { "u": 0.5,  "phase": "forward_swing", "trunk": 8, "rs": -5, "re": 20 },
+      { "u": 0.55, "phase": "contact", "trunk": 12, "rs": 35, "re": 60, "ls": 40, "le": 30 },
+      { "u": 0.78, "phase": "follow_through", "trunk": 15, "rs": 130, "re": 210, "ls": 10, "le": 20, "rt": -5, "rk": -18 },
+      { "u": 1,    "phase": "recovery", "trunk": 10, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -12, "lt": 12, "lk": -8 } ] },
+    "backhand": { "name": "Backhand", "durationS": 1.4, "contactU": 0.55, "keys": [
+      { "u": 0,    "phase": "ready", "trunk": 10, "rot": 0.2, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -12, "lt": 12, "lk": -8 },
+      { "u": 0.2,  "phase": "preparation", "trunk": 5, "rs": -15, "re": 10, "ls": -20, "le": 10 },
+      { "u": 0.4,  "phase": "backswing", "trunk": 0, "rs": -35, "re": -60, "ls": -30, "le": -40, "rt": -12, "rk": -28, "lt": 22, "lk": -5 },
+      { "u": 0.5,  "phase": "forward_swing", "trunk": 6, "rs": 10, "re": 20, "ls": -40, "le": -60 },
+      { "u": 0.55, "phase": "contact", "trunk": 10, "rs": 50, "re": 80, "ls": -45, "le": -70 },
+      { "u": 0.78, "phase": "follow_through", "trunk": 12, "rs": 120, "re": 150, "ls": -40, "le": -60, "rt": -5, "rk": -18 },
+      { "u": 1,    "phase": "recovery", "trunk": 10, "rs": 25, "re": 70, "ls": 15, "le": 50, "rt": -8, "rk": -12, "lt": 12, "lk": -8 } ] },
+    "volley_fh": { "name": "Forehand volley", "durationS": 1.0, "contactU": 0.5, "keys": [
+      { "u": 0,    "phase": "ready", "trunk": 10, "rot": 0.35, "rs": 30, "re": 90, "ls": 20, "le": 70, "rt": -8, "rk": -15, "lt": 12, "lk": -10 },
+      { "u": 0.2,  "phase": "preparation", "trunk": 8, "rs": 40, "re": 130, "ls": 50, "le": 90 },
+      { "u": 0.35, "phase": "backswing", "trunk": 5, "rs": 30, "re": 150, "ls": 70, "le": 95 },
+      { "u": 0.45, "phase": "forward_swing", "trunk": 10, "rs": 50, "re": 125, "rt": -10, "rk": -20, "lt": 20 },
+      { "u": 0.5,  "phase": "contact", "trunk": 14, "rs": 60, "re": 110, "ls": 45, "le": 60 },
+      { "u": 0.75, "phase": "follow_through", "trunk": 15, "rs": 70, "re": 90, "ls": 30, "le": 50 },
+      { "u": 1,    "phase": "recovery", "trunk": 10, "rs": 30, "re": 90, "ls": 20, "le": 70, "rt": -8, "rk": -15, "lt": 12, "lk": -10 } ] }
+  }
+}
