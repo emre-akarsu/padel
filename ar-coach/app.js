@@ -86,11 +86,16 @@ async function startLive(mode) {
   $('#setupList').innerHTML = tips.map(t => `<li>${t}</li>`).join('') + '<li id="fbStat">Full body: checking...</li>';
   $('#hCount').textContent = '0'; ['#hTempo', '#hHeight', '#hPhase'].forEach(s => $(s).textContent = '-');
   const b = band('contact_low', S.shot); $('#hHeightL').textContent = 'contact m' + (b && gate('contact_low').show ? ` (${b[0]}-${b[1]})` : '');
-  $('#setupStatus').textContent = S.engine === 'onnx' ? 'Loading the pose model (22 MB the first time, then cached)…' : 'Starting…';
-  try { await getEngine(mode); } catch (e) { $('#setupStatus').textContent = 'Engine error: ' + e.message + '. Try again, or pick "mock" in Settings → Engine.'; console.error(e); return; }
-  $('#setupStatus').textContent = 'Ready: ' + engine.info.name;
-  if (!engine.info.capabilities.live) { $('#setupStatus').textContent = engine.info.name + ' is upload-only. Pick mock or onnx in Settings.'; return; }
+  // Camera first (no black screen while the model loads), then the engine; frames are only analysed once it is ready.
+  L.engReady = false; $('#startBtn').disabled = true;
+  $('#setupStatus').textContent = 'Opening the camera…';
   await openCam();
+  if (!L.stream) return;
+  $('#setupStatus').textContent = S.engine === 'onnx' ? 'Camera on. Loading the pose model (22 MB the first time, then cached)…' : 'Starting…';
+  try { await getEngine(mode); } catch (e) { $('#setupStatus').textContent = 'Engine error: ' + e.message + '. Try again, or pick "mock" in Settings → Engine.'; console.error(e); return; }
+  if (!engine.info.capabilities.live) { $('#setupStatus').textContent = engine.info.name + ' is upload-only. Pick mock or onnx in Settings.'; return; }
+  engine.reset(); L.engReady = true; $('#startBtn').disabled = false;
+  $('#setupStatus').textContent = 'Ready: ' + engine.info.name;
   try { L.wake = await navigator.wakeLock?.request('screen'); } catch { }
 }
 
@@ -99,16 +104,23 @@ async function openCam() {
   const v = r => ({ audio: false, video: { facingMode: L.facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: r } } });
   try { L.stream = await navigator.mediaDevices.getUserMedia(v(120)); }
   catch { try { L.stream = await navigator.mediaDevices.getUserMedia(v(30)); } catch (e) { $('#setupStatus').textContent = 'Camera blocked: ' + e.message; return; } }
-  cam.srcObject = L.stream; await cam.play().catch(() => { });
-  await new Promise(r => cam.videoWidth ? r() : cam.onloadedmetadata = r);
+  cam.setAttribute('playsinline', ''); cam.muted = true; cam.srcObject = L.stream;
+  await cam.play().catch(e => console.warn('video play', e));
+  const ok = await Promise.race([new Promise(r => cam.videoWidth ? r(true) : cam.onloadedmetadata = () => r(true)), new Promise(r => setTimeout(() => r(false), 5000))]);
+  if (!ok || cam.paused) { // never leave a silent black screen: say what happened and offer a tap to start the video
+    $('#setupStatus').innerHTML = 'Camera did not start. <button class="btn primary" id="camRetry">Tap to start camera</button>';
+    await new Promise(r => $('#camRetry').onclick = () => { cam.play().catch(() => { }); r(); });
+    await new Promise(r => cam.videoWidth ? r() : cam.onloadedmetadata = r);
+  }
   ov.width = cam.videoWidth; ov.height = cam.videoHeight;
   const st = L.stream.getVideoTracks()[0].getSettings(); L.camFps = st.frameRate;
   const m = L.facing === 'user'; cam.classList.toggle('mirror', m); ov.classList.toggle('mirror', m);
-  engine.reset(); schedule();
+  engine && L.engReady && engine.reset(); schedule();
 }
 function schedule() { if (!L.on) return; cam.requestVideoFrameCallback ? cam.requestVideoFrameCallback(onFrame) : requestAnimationFrame(onFrame); }
 function onFrame(now) {
   schedule();
+  if (!L.engReady || !engine) return;
   if (L.busy) { L.dropped++; return; }
   if (now - L.lastProc < 30) return; // cap inference ~30 fps
   L.lastProc = now; L.busy = true;
