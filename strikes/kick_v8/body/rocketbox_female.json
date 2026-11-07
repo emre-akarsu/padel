@@ -1,0 +1,45 @@
+{
+  "id": "rocketbox_female",
+  "description": "Skeleton profile for Microsoft Rocketbox Bip01 characters (tested on Female_Adult_17). Bone lengths are measured at load time from the character's rest skeleton (skeleton file), so they are fixed for that character.",
+  "skeleton": "../assets/skeleton.json",
+  "bone_map": {
+    "pelvis": "Bip01 Pelvis", "spine": ["Bip01 Spine", "Bip01 Spine1"], "chest": ["Bip01 Spine2", "Bip01 L Clavicle", "Bip01 R Clavicle"], "neck": ["Bip01 Neck", "Bip01 Head"],
+    "r_upper": "Bip01 R UpperArm", "r_fore": "Bip01 R Forearm", "r_hand": "Bip01 R Hand",
+    "l_upper": "Bip01 L UpperArm", "l_fore": "Bip01 L Forearm", "l_hand": "Bip01 L Hand",
+    "r_thigh": "Bip01 R Thigh", "r_shin": "Bip01 R Calf", "r_foot": "Bip01 R Foot", "r_toe": "Bip01 R Toe0",
+    "l_thigh": "Bip01 L Thigh", "l_shin": "Bip01 L Calf", "l_foot": "Bip01 L Foot", "l_toe": "Bip01 L Toe0",
+    "head": "Bip01 Head", "neck_joint": "Bip01 Neck", "chest_joint": "Bip01 Spine2",
+    "r_clavicle": "Bip01 R Clavicle", "l_clavicle": "Bip01 L Clavicle",
+    "r_fingers": { "thumb": ["Bip01 R Finger0", "Bip01 R Finger01", "Bip01 R Finger02"], "index": ["Bip01 R Finger1", "Bip01 R Finger11", "Bip01 R Finger12"],
+                   "middle": ["Bip01 R Finger2", "Bip01 R Finger21", "Bip01 R Finger22"], "ring": ["Bip01 R Finger3", "Bip01 R Finger31", "Bip01 R Finger32"],
+                   "pinky": ["Bip01 R Finger4", "Bip01 R Finger41", "Bip01 R Finger42"] },
+    "l_fingers": { "thumb": ["Bip01 L Finger0", "Bip01 L Finger01", "Bip01 L Finger02"], "index": ["Bip01 L Finger1", "Bip01 L Finger11", "Bip01 L Finger12"],
+                   "middle": ["Bip01 L Finger2", "Bip01 L Finger21", "Bip01 L Finger22"], "ring": ["Bip01 L Finger3", "Bip01 L Finger31", "Bip01 L Finger32"],
+                   "pinky": ["Bip01 L Finger4", "Bip01 L Finger41", "Bip01 L Finger42"] }
+  },
+  "anchors": { "r_clavicle": "chest_joint", "l_clavicle": "chest_joint", "r_thigh": "pelvis", "l_thigh": "pelvis" },
+  "rom_deg": {
+    "elbow_flexion": [2, 145],
+    "forearm_pronation": [-85, 85],
+    "wrist_flexion": [-70, 70],
+    "wrist_deviation": [-35, 20],
+    "shoulder_rotation": [-80, 180],
+    "shoulder_horizontal_extension_max": 60,
+    "shoulder_cross_body_max": 45,
+    "chest_yaw": [-60, 60], "lean": [-30, 45], "chest_roll": [-35, 35], "neck_pitch": [-60, 50],
+    "knee_flexion": [0, 140], "hip_flexion": [-30, 120], "hip_abduction": [-30, 50], "ankle": [-20, 50],
+    "knee_valgus_max": 30
+  },
+  "conventions": {
+    "pronation": "+ pronation / - supination, 0 = palm facing the thigh with the arm hanging",
+    "wrist": "+ flexion toward the palm, - extension (laid back); + radial deviation (toward the thumb), - ulnar",
+    "shoulder_rotation": "humeral axial rotation, + external / - internal, measured from the arm abducted 90 deg with the elbow bend facing forward"
+  },
+  "pronation_on_forearm": 0.55,
+  "pole_rules": {
+    "knee": "knee points along the foot's facing direction, 0.1 outward; it only bends forward",
+    "elbow": "per phase 'r_pole' / 'l_arm.pole' (world direction the elbow points); the solver then searches +-150 deg of swivel about the shoulder-wrist axis for the configuration that keeps shoulder rotation, pronation and wrist inside ROM, preferring the authored pole and the phase's wrist cue"
+  },
+  "relaxed_hand_curl_deg": [20, 28, 15],
+  "body_capsules_m": { "torso_lower": 0.13, "torso_upper": 0.13, "head": 0.11, "thigh": 0.07, "shin": 0.05 }
+}
