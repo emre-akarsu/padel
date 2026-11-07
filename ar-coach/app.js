@@ -5,7 +5,7 @@ const LS = {
   get(k, d) { try { const v = JSON.parse(localStorage.getItem(k)); return v ?? d; } catch { return d; } },
   set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch { alert('Phone storage is full: export and clear the inbox.'); } }
 };
-const S = Object.assign({ engine: 'onnx', use: 'machine', view: 'side', height: 1.8, hand: 'right', voice: '1', remote: '', shot: 'bandeja' }, LS.get('padel.settings', {}));
+const S = Object.assign({ engine: 'onnx', use: 'machine', view: 'side', height: 1.8, hand: 'right', voice: '1', remote: '', shot: 'bandeja', fb: 'rep', buddy: '1' }, LS.get('padel.settings', {}));
 const saveS = () => LS.set('padel.settings', S);
 const PH_COL = { preparation: '#4fc3f7', backswing: '#ab47bc', forward_swing: '#ff9f43', contact: '#d8ea3a', follow_through: '#5fb07a', recovery: '#90a4ae', ready: '#cfd8dc' };
 const PH_NAME = { ready: 'Ready', preparation: 'Preparation', backswing: 'Backswing', forward_swing: 'Forward swing', contact: 'Contact', follow_through: 'Follow-through', recovery: 'Recovery' };
@@ -58,12 +58,13 @@ const USE_TIPS = {
 const USE_NAME = { shadow: 'Shadow swing', machine: 'Ball machine', gadget: 'Hitting gadget', wall: 'Wall / rebound', lesson: 'Coach lesson' };
 
 /* ---------- home ---------- */
+const lvOf = id => (LS.get('padel.mastery', {})[id] || {}).best || 0;
 function renderHome() {
-  $('#shots').innerHTML = Object.entries(PadelGhost.specs.shots).map(([id, s]) => `<button class="chip" data-shot="${id}" aria-pressed="${id === S.shot}">${esc(s.name)}</button>`).join('');
+  $('#shots').innerHTML = Object.entries(PadelGhost.specs.shots).map(([id, s]) => `<button class="chip" data-shot="${id}" aria-pressed="${id === S.shot}">${esc(s.name)}${lvOf(id) ? `<span class="lvl">Lv ${lvOf(id)}</span>` : ''}</button>`).join('');
   $$('#shots .chip').forEach(b => b.onclick = () => { S.shot = b.dataset.shot; saveS(); renderHome(); });
   $('#sEngine').innerHTML = PadelEngines.list().map(n => `<option ${n === S.engine ? 'selected' : ''}>${n}</option>`).join('');
   const bind = (sel, key) => { const el = $(sel); el.value = S[key]; el.onchange = () => { S[key] = el.value; saveS(); }; };
-  bind('#sEngine', 'engine'); bind('#sView', 'view'); bind('#sHeight', 'height'); bind('#sHand', 'hand'); bind('#sVoice', 'voice'); bind('#sRemote', 'remote');
+  bind('#sEngine', 'engine'); bind('#sView', 'view'); bind('#sHeight', 'height'); bind('#sHand', 'hand'); bind('#sVoice', 'voice'); bind('#sFb', 'fb'); bind('#sBuddy', 'buddy'); bind('#sRemote', 'remote');
   $('#engName').textContent = S.engine;
   $('#gates').innerHTML = REL.checks.map(c => { const g = gate(c.id), lvl = g.fault ? ['LIVE CUE', 'ok'] : g.show ? ['NUMBERS', ''] : ['HIDDEN', 'bad'];
     return `<tr><td>${esc(c.phase || '')}</td><td>${esc(c.label || c.id)}</td><td class="small muted">${c.precisionLB != null ? Math.round(c.precisionLB * 100) + '% · ' : ''}${c.n || 0}/${REL.gates.minN}</td><td><span class="pill ${lvl[1]}">${lvl[0]}</span></td></tr>`; }).join('');
@@ -85,6 +86,7 @@ async function startLive(mode) {
   const tips = DR ? [`${DR.step.name}: ${DR.step.reps} reps.`, 'Focus: ' + DR.step.focus, 'Pass: ' + DR.set.pass, ...USE_TIPS[use].slice(0, 1)] : USE_TIPS[use];
   $('#setupList').innerHTML = tips.map(t => `<li>${t}</li>`).join('') + '<li id="fbStat">Full body: checking...</li>';
   $('#hCount').textContent = '0'; ['#hTempo', '#hHeight', '#hPhase'].forEach(s => $(s).textContent = '-');
+  newMastery();
   const b = band('contact_low', S.shot); $('#hHeightL').textContent = 'contact m' + (b && gate('contact_low').show ? ` (${b[0]}-${b[1]})` : '');
   // Camera first (no black screen while the model loads), then the engine; frames are only analysed once it is ready.
   L.engReady = false; $('#startBtn').disabled = true;
@@ -216,7 +218,9 @@ function onStroke(s) {
   const f = L.faults < 3 && s.checks.find(c => c.pass === false && gate(c.id).fault);
   const g = !f && s.checks.find(c => c.pass === true && gate(c.id).good);
   if (f) { txt += ' ' + gate(f.id).def.cue + '.'; L.faults++; } else if (g) txt += ' ' + gate(g.id).def.goodCue + '.';
-  say(txt); flashCue(txt);
+  const lvTxt = masteryStroke(s);
+  if (S.fb !== 'set' || lvTxt || f) say(lvTxt ? (S.fb === 'set' ? lvTxt : txt + ' ' + lvTxt) : txt);
+  flashCue(txt);
   const frames = L.ring.filter(x => x.t >= s.tStart - .3 && x.t <= s.tEnd + .3 && x.bmp);
   s._frames = frames; s._src = [cam.videoWidth, cam.videoHeight];
   frames.forEach(x => L.keep.add(x.bmp));
@@ -233,7 +237,7 @@ function onStroke(s) {
   }, 6000);
 }
 
-$('#startBtn').onclick = () => { engine && engine.reset(); L.strokes = []; L.running = true; L.start = Date.now(); $('#setup').hidden = true; $('#hCount').textContent = '0'; say('Go'); };
+$('#startBtn').onclick = () => { engine && engine.reset(); L.strokes = []; newMastery(); L.running = true; L.start = Date.now(); $('#setup').hidden = true; $('#hCount').textContent = '0'; say('Go'); };
 $('#ghostBtn').onclick = () => L.ghostOn = !L.ghostOn;
 /* voice questions during live: browser speech recognition (free, no AI); answers come from the same template chat */
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -259,10 +263,51 @@ $('#liveBack').onclick = endLive;
 function endLive() {
   L.on = false; $('#replay').hidden = true; RP && cancelAnimationFrame(RP.raf); RP = null; L.stream && L.stream.getTracks().forEach(t => t.stop()); L.stream = null; L.wake?.release?.();
   L.ring.forEach(f => f.bmp?.close()); L.ring = [];
-  if (L.strokes.length) saveSession({ id: L.sessionId, mode: L.mode, shot: S.shot, start: L.start, end: Date.now(), engine: engine.info.name, strokes: L.strokes.map(slim) });
+  if (L.strokes.length) saveSession({ id: L.sessionId, mode: L.mode, shot: S.shot, start: L.start, end: Date.now(), engine: engine.info.name, mastery: L.M ? L.M.summary() : null, strokes: L.strokes.map(slim) });
   $('#live').hidden = true; show(L.strokes.length ? 'summary' : 'home');
 }
 const slim = s => ({ id: s.id, tStart: s.tStart, tContact: s.tContact, tEnd: s.tEnd, shot: s.shot, phases: s.phases, metrics: s.metrics, checks: s.checks, playerFeedback: s.playerFeedback || null });
+
+/* ---------- live drill mastery + mini 3D girl (mastery.js, buddy3d.js) ---------- */
+function newMastery() {
+  L.M = PadelMastery.createSession({ shot: S.shot, repGoal: DR ? DR.step.reps : 20, tempoBand: band('tempo', S.shot), heightBand: band('contact_low', S.shot), store: LS });
+  const B = window.PadelBuddy, on = S.buddy !== '0';
+  $('#buddy').hidden = !on; if (B && on) { B.setShot(S.shot); B.mount($('#buddy')); } else if (B) B.mount(null);
+  masteryHud({ level: 0, pct: 0, measured: 0, next: PadelMastery.LEVELS[0] });
+}
+function masteryHud(r) {
+  const nx = r.next, L1 = PadelMastery.LEVELS;
+  $('#hLevel').textContent = 'Lv ' + r.level + (r.measured ? ' · ' + Math.round(r.pct * 100) + '%' : '');
+  $('#hLevelL').textContent = nx ? 'next: ' + nx.rule : 'top level';
+  const target = nx && nx.pct ? nx.pct : 1; $('#hMbar').style.width = Math.min(100, (nx && !nx.pct ? L.strokes.length / 5 : r.pct / target) * 100) + '%';
+}
+function buddySay(t, ms = 1800) { const m = $('#buddyMsg'); if (S.buddy === '0') return; m.textContent = t; m.hidden = false; clearTimeout(buddySay.t); buddySay.t = setTimeout(() => m.hidden = true, ms); }
+function masteryStroke(s) { // returns extra words to speak (level-ups only), drives the HUD, the girl and the effects
+  if (!L.M) return ''; const r = L.M.add(s); masteryHud(r);
+  const B = window.PadelBuddy; let speak = '';
+  for (const e of r.events) {
+    if (B && S.buddy !== '0') B.react(e);
+    if (e.type === 'good') buddySay(['Nice!', 'In the band!', 'Good tempo!', 'Yes!'][r.reps % 4], 900);
+    if (e.type === 'streak') buddySay(e.n + ' in a row!');
+    if (e.type === 'setdone') buddySay('Rep goal done!', 2200);
+    if (e.type === 'badge') setTimeout(() => buddySay('Badge: ' + e.label.split(':')[0] + '!', 2600), 2600);
+  }
+  const up = r.events.filter(e => e.type === 'levelup').pop();
+  if (up) { levelUp(up); speak = `Level ${up.level}, ${up.name}!` + (up.newBest ? ' New best.' : ''); }
+  return speak;
+}
+function levelUp(e) {
+  const b = $('#lvBanner'); b.innerHTML = `<b>Level ${e.level}</b><span>${esc(e.name)} · ${esc(shotName(S.shot))}${e.newBest ? ' · new best' : ''}</span>`; b.hidden = false;
+  clearTimeout(levelUp.t); levelUp.t = setTimeout(() => b.hidden = true, 3000); confetti(e.level >= 4 ? 220 : 120);
+}
+function confetti(n) {
+  const c = $('#fx'), x = c.getContext('2d'), W = c.width = c.clientWidth, H = c.height = c.clientHeight, col = ['#d8ea3a', '#5fb07a', '#4fc3f7', '#ff9f43', '#ffffff', '#ab47bc'];
+  const P = Array.from({ length: n }, () => ({ x: W / 2 + (Math.random() - .5) * W * .3, y: H * .38, vx: (Math.random() - .5) * W * .02, vy: -Math.random() * H * .025 - H * .008, r: Math.random() * 6, s: 4 + Math.random() * 5, c: col[Math.random() * col.length | 0] }));
+  const t0 = performance.now();
+  (function step(now) { const age = now - t0; x.clearRect(0, 0, W, H); if (age > 2200) return;
+    for (const p of P) { p.vy += H * .0009; p.x += p.vx; p.y += p.vy; p.r += .2; x.save(); x.globalAlpha = Math.max(0, 1 - age / 2200); x.translate(p.x, p.y); x.rotate(p.r); x.fillStyle = p.c; x.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2); x.restore(); }
+    requestAnimationFrame(step); })(t0);
+}
 
 /* ---------- replay: slow-mo 0.25x, skeleton, hit-path trail, ghost, contact freeze ---------- */
 const rp = $('#rp'), rctx = rp.getContext('2d');
@@ -363,6 +408,7 @@ function renderSummary() {
     return `<div class="card"><div class="bar"><b class="grow">${new Date(x.start).toLocaleString()} · ${esc(x.mode)} · ${esc(shotName(x.shot))}</b><span class="muted small">${esc(x.engine)}</span></div>
       <p><b>${countTxt(x.strokes.length)}</b> stroke${x.strokes.length === 1 ? "" : "s"} in ${Math.max(1, Math.round((x.end - x.start) / 60000))} min.
       ${h ? `Contact height ${fmt(h.min, 2)}-${fmt(h.max, 2)} m (mean ${fmt(h.mean, 2)}).` : ''} ${tp ? `Tempo ${fmt(tp.mean, 2)} ± ${fmt(tp.sd, 2)} s${tp.sd < .12 ? ', steady' : ''}.` : ''}</p>
+      ${x.mastery && x.mastery.measured ? `<p>Level reached: <b>${x.mastery.level ? 'Lv ' + x.mastery.level + ' ' + esc(x.mastery.levelName) : 'not yet'}</b> · ${Math.round(x.mastery.pct * 100)}% of measured reps in band · best streak ${x.mastery.bestStreak}.</p>` : ''}
       ${rows ? `<table><tr><th>Measure</th><th>Mean</th><th>Target band</th></tr>${rows}</table>` : ''}</div>`;
   }).join('') + '<p class="muted small">Numbers only. Faults are drafts for your coach until each check passes its release gate.</p>';
 }

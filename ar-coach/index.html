@@ -50,6 +50,16 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 4px;b
 #replay .bar{padding:8px max(10px,env(safe-area-inset-left));padding-bottom:max(8px,env(safe-area-inset-bottom))}
 .inbox-item{display:grid;grid-template-columns:120px 1fr;gap:10px}.inbox-item img{width:120px;border-radius:8px;background:#000}
 @media (max-width:420px){.inbox-item{grid-template-columns:1fr}.inbox-item img{width:100%}}
+/* live drill mastery: mini 3D girl, level meter, level-up banner, confetti */
+#buddy{position:absolute;right:max(6px,env(safe-area-inset-right));bottom:calc(150px + env(safe-area-inset-bottom));width:124px;height:166px;z-index:7;pointer-events:none;border-radius:16px;background:radial-gradient(ellipse at 50% 80%,#ffffff22,#0000 70%)}
+#buddyMsg{position:absolute;right:max(10px,env(safe-area-inset-right));bottom:calc(322px + env(safe-area-inset-bottom));z-index:7;background:#fff;color:#14212b;font-weight:700;padding:5px 10px;border-radius:12px;font-size:14px;max-width:180px;text-align:center;pointer-events:none;animation:pop .25s ease-out}
+#fx{position:absolute;inset:0;width:100%;height:100%;z-index:8;pointer-events:none}
+#lvBanner{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);z-index:9;text-align:center;pointer-events:none;background:#0e161dd9;border:2px solid #d8ea3a;border-radius:20px;padding:14px 22px;animation:pop .35s cubic-bezier(.2,1.6,.4,1)}
+#lvBanner b{display:block;font-size:30px;color:#d8ea3a;line-height:1.1}#lvBanner span{font-size:15px;opacity:.9}
+@keyframes pop{from{transform:translate(-50%,-50%) scale(.4);opacity:0}}
+#buddyMsg{animation-name:pop2}@keyframes pop2{from{transform:scale(.5);opacity:0}}
+.mstat{min-width:120px}.mbar{height:6px;border-radius:3px;background:#ffffff33;margin-top:3px;overflow:hidden}.mbar i{display:block;height:100%;width:0;background:#d8ea3a;transition:width .4s}
+.lvl{font-size:11px;font-weight:700;background:var(--ball);color:#14212b;border-radius:999px;padding:1px 6px;margin-left:4px}
 pre{white-space:pre-wrap;font-size:12px}
 </style>
 </head>
@@ -81,6 +91,8 @@ pre{white-space:pre-wrap;font-size:12px}
     <label class="f">Camera view<select id="sView"><option value="side">Side (recommended)</option><option value="behind">Behind</option><option value="front">Front</option></select></label>
     <label class="f">Your height (m)<input id="sHeight" type="number" step="0.01" min="1.2" max="2.2"></label>
     <label class="f">Hand<select id="sHand"><option value="right">Right</option><option value="left">Left</option></select></label>
+    <label class="f">Live feedback<select id="sFb"><option value="rep">After every rep</option><option value="set">Coach me less: after each set</option></select></label>
+    <label class="f">Mini coach (3D girl)<select id="sBuddy"><option value="1">On</option><option value="0">Off</option></select></label>
     <label class="f">Voice cues<select id="sVoice"><option value="1">On</option><option value="0">Off</option></select></label>
     <label class="f">Server URL (remote engine)<input id="sRemote" type="url" placeholder="https://msi.example:8443"></label>
   </div>
@@ -123,6 +135,7 @@ pre{white-space:pre-wrap;font-size:12px}
     <div class="stat"><b id="hCount">0</b><span>strokes</span></div>
     <div class="stat"><b id="hTempo">-</b><span>tempo s</span></div>
     <div class="stat"><b id="hHeight">-</b><span id="hHeightL">contact m</span></div>
+    <div class="stat mstat"><b id="hLevel">Lv 0</b><span id="hLevelL">reps in band</span><div class="mbar"><i id="hMbar"></i></div></div>
     <div class="stat"><b id="hPhase">-</b><span>phase (approx.)</span></div>
     <div class="grow"></div><button class="btn" id="lastReplay" hidden>Replay</button>
   </div>
@@ -131,6 +144,8 @@ pre{white-space:pre-wrap;font-size:12px}
     <ul class="small" id="setupList"></ul>
     <div class="bar"><span id="setupStatus" class="small grow"></span><button class="btn primary" id="startBtn">Start</button></div>
   </div>
+  <div id="buddy" aria-hidden="true"></div><div id="buddyMsg" hidden></div>
+  <canvas id="fx"></canvas><div id="lvBanner" hidden></div>
   <div id="replay" hidden>
     <canvas id="rp"></canvas>
     <div class="bar"><span id="rpInfo" class="small grow"></span>
@@ -141,6 +156,8 @@ pre{white-space:pre-wrap;font-size:12px}
 
 <script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
 <script type="module" src="ghost3d.js"></script>
+<script type="module" src="buddy3d.js"></script>
+<script src="mastery.js"></script>
 <script src="engine/core.js"></script>
 <script src="ghost.js"></script>
 <script src="engine/mock.js"></script>
