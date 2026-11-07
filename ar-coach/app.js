@@ -91,31 +91,63 @@ async function startLive(mode) {
   $('#setupStatus').textContent = 'Opening the camera…';
   await openCam();
   if (!L.stream) return;
-  $('#setupStatus').textContent = S.engine === 'onnx' ? 'Camera on. Loading the pose model (22 MB the first time, then cached)…' : 'Starting…';
+  $('#setupStatus').textContent = S.engine === 'onnx' ? 'Camera on (' + L.camInfo + '). Loading the pose model (22 MB the first time, then cached)…' : 'Starting…';
   try { await getEngine(mode); } catch (e) { $('#setupStatus').textContent = 'Engine error: ' + e.message + '. Try again, or pick "mock" in Settings → Engine.'; console.error(e); return; }
   if (!engine.info.capabilities.live) { $('#setupStatus').textContent = engine.info.name + ' is upload-only. Pick mock or onnx in Settings.'; return; }
   engine.reset(); L.engReady = true; $('#startBtn').disabled = false;
-  $('#setupStatus').textContent = 'Ready: ' + engine.info.name;
+  $('#setupStatus').textContent = 'Ready: ' + engine.info.name + (L.camInfo ? ' · camera ' + L.camInfo : '');
   try { L.wake = await navigator.wakeLock?.request('screen'); } catch { }
 }
 
 async function openCam() {
-  if (L.stream) L.stream.getTracks().forEach(t => t.stop());
-  const v = r => ({ audio: false, video: { facingMode: L.facing, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: r } } });
-  try { L.stream = await navigator.mediaDevices.getUserMedia(v(120)); }
-  catch { try { L.stream = await navigator.mediaDevices.getUserMedia(v(30)); } catch (e) { $('#setupStatus').textContent = 'Camera blocked: ' + e.message; return; } }
-  cam.setAttribute('playsinline', ''); cam.muted = true; cam.srcObject = L.stream;
-  await cam.play().catch(e => console.warn('video play', e));
-  const ok = await Promise.race([new Promise(r => cam.videoWidth ? r(true) : cam.onloadedmetadata = () => r(true)), new Promise(r => setTimeout(() => r(false), 5000))]);
-  if (!ok || cam.paused) { // never leave a silent black screen: say what happened and offer a tap to start the video
-    $('#setupStatus').innerHTML = 'Camera did not start. <button class="btn primary" id="camRetry">Tap to start camera</button>';
-    await new Promise(r => $('#camRetry').onclick = () => { cam.play().catch(() => { }); r(); });
-    await new Promise(r => cam.videoWidth ? r() : cam.onloadedmetadata = r);
+  // Tries each camera setting in turn and keeps the first one that shows real, moving, non-black frames.
+  // iPhones can return a 120 fps stream that stays black, and some phones reject strict settings, so we fall back.
+  const st$ = $('#setupStatus'), fm = L.facing;
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { st$.textContent = 'Camera not available here' + (window.isSecureContext ? '' : ' (page is not HTTPS)') + '. Open this page in Safari or Chrome directly, not inside another app.'; return; }
+  const tries = [
+    { video: { facingMode: fm, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 120 } } },
+    { video: { facingMode: fm, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } } },
+    { video: { facingMode: fm } },
+    { video: true }];
+  let lastErr = null;
+  for (let i = 0; i < tries.length; i++) {
+    if (L.stream) L.stream.getTracks().forEach(t => t.stop()); L.stream = null;
+    st$.textContent = `Opening the camera (try ${i + 1} of ${tries.length})…`;
+    try { L.stream = await navigator.mediaDevices.getUserMedia({ audio: false, ...tries[i] }); }
+    catch (e) { lastErr = e; if (e.name === 'NotAllowedError' || e.name === 'SecurityError') break; continue; }
+    cam.setAttribute('playsinline', ''); cam.setAttribute('webkit-playsinline', ''); cam.muted = true; cam.autoplay = true; cam.srcObject = L.stream;
+    await cam.play().catch(e => { lastErr = e; });
+    if (cam.paused) { // autoplay refused: one tap starts it
+      st$.innerHTML = 'Camera is ready. <button class="btn primary" id="camRetry">Tap to start camera</button>';
+      await new Promise(r => $('#camRetry').onclick = () => { cam.play().catch(e => lastErr = e); r(); });
+    }
+    const v = await camLive(2500);
+    if (v === 'ok') { lastErr = null; break; }
+    lastErr = { name: v, message: v === 'black' ? 'the picture stayed black' : 'no frames arrived' };
+  }
+  if (lastErr || !L.stream) {
+    const n = lastErr ? lastErr.name : 'Error', hint = n === 'NotAllowedError' ? ' Allow the camera for this site (Safari: aA menu → Website Settings → Camera → Allow), then tap Try again.' : n === 'NotReadableError' ? ' Another app is using the camera. Close it, then tap Try again.' : '';
+    st$.innerHTML = `Camera did not start: ${/^(black|noframes)$/.test(n) ? lastErr.message + ' (tried 4 camera settings)' : n + (lastErr.message ? ' (' + lastErr.message + ')' : '')}.${hint} <button class="btn primary" id="camRetry">Try again</button>`;
+    $('#camRetry').onclick = () => startLive(L.mode);
+    if (L.stream) L.stream.getTracks().forEach(t => t.stop()); L.stream = null; return;
   }
   ov.width = cam.videoWidth; ov.height = cam.videoHeight;
   const st = L.stream.getVideoTracks()[0].getSettings(); L.camFps = st.frameRate;
+  L.camInfo = `${cam.videoWidth}×${cam.videoHeight}${st.frameRate ? ' @ ' + Math.round(st.frameRate) + ' fps' : ''}`;
   const m = L.facing === 'user'; cam.classList.toggle('mirror', m); ov.classList.toggle('mirror', m);
   engine && L.engReady && engine.reset(); schedule();
+}
+// 'ok' when frames move and are not all black; 'black' or 'noframes' otherwise
+async function camLive(ms) {
+  const c = document.createElement('canvas'); c.width = c.height = 16; const x = c.getContext('2d', { willReadFrequently: true });
+  const t0 = performance.now(), ct0 = cam.currentTime; let moved = false, lit = false;
+  while (performance.now() - t0 < ms) {
+    await new Promise(r => setTimeout(r, 150));
+    if (cam.videoWidth && cam.currentTime !== ct0) moved = true;
+    if (moved) { try { x.drawImage(cam, 0, 0, 16, 16); const d = x.getImageData(0, 0, 16, 16).data; let sum = 0; for (let i = 0; i < d.length; i += 4) sum += d[i] + d[i + 1] + d[i + 2]; if (sum / (d.length / 4) > 12) lit = true; } catch { lit = true; } }
+    if (moved && lit) return 'ok';
+  }
+  return moved ? 'black' : 'noframes';
 }
 function schedule() { if (!L.on) return; cam.requestVideoFrameCallback ? cam.requestVideoFrameCallback(onFrame) : requestAnimationFrame(onFrame); }
 function onFrame(now) {
