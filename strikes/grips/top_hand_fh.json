@@ -1,0 +1,11 @@
+{
+ "id": "top_hand_fh",
+ "description": "Top hand of a two-handed backhand: eastern-forehand palm, handle diagonal across the fingers (finger grip).",
+ "bevel_deg": 0,
+ "handle_tilt_deg": 50,
+ "fist_offset_m": {
+  "palm": 0.031,
+  "along_fingers": 0.06
+ },
+ "fingers": "wrap"
+}

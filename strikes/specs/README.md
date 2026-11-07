@@ -85,7 +85,7 @@ Pose fields:
    It uses multi-start plus a local pattern search. If a target can't be reached, the contact point moves; a joint never breaks.
 2. **Interpolation.** Those seven joint parameters, the trunk and the pelvis follow C2 splines, soft-limited to their ranges. The legs are solved by IK to the planted feet. Every in-between frame is therefore anatomical, and the racket path comes out of forward kinematics.
 3. **Via-keys.** If the racket passes through the body between keys, a key is inserted at that instant, solved clear of the body, and the stroke is re-splined.
-4. **Two hands.** A closed chain, solved as dense coupled keys every 1/30 s: the dominant arm follows the racket path while the second hand must stay legally on the handle within its slide band, with joint acceleration penalised. Both arms are then splined.
+4. **Two hands.** A closed chain. Both arms (14 angles) are solved together by box-bounded Levenberg–Marquardt at keys every 1/30 s: the racket follows the stroke path and the second hand stays on the handle within its slide band. A closure pass then re-solves the second arm alone at 120 Hz, using the spline value at that time as the prior, so the fist sits exactly on the handle (0 mm) and the motion stays smooth. Options: `keyHz`, `bakeHz`, `fw` (face weight).
 
 ## Gate
 Run `node scripts/check.mjs [specs/<sport>.json]`. It exits with code 1 if any technique fails. Pass rules:
