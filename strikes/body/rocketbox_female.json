@@ -23,7 +23,7 @@
     "forearm_pronation": [-85, 85],
     "wrist_flexion": [-70, 70],
     "wrist_deviation": [-35, 20],
-    "shoulder_rotation": [-80, 120],
+    "shoulder_rotation": [-80, 180],
     "shoulder_horizontal_extension_max": 60,
     "shoulder_cross_body_max": 45,
     "chest_yaw": [-60, 60], "lean": [-30, 45], "chest_roll": [-35, 35], "neck_pitch": [-60, 50],

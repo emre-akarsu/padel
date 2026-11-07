@@ -3,7 +3,7 @@
 // Reuses ../strikes assets and solver as-is. Falls back to the 2D stick ghost if anything fails.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { loadLayer, compileTechnique } from '../strikes/solver.js?v=6';
+import { loadLayer, compileTechnique } from '../strikes/solver.js?v=8';
 
 const BASE = '../strikes/', B = 'Bip01 ';
 const st = { ready: false, comps: {} };

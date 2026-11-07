@@ -311,7 +311,58 @@ export function lowerPelvis(ch, D, pel0, feet) {     // smooth drop so planted f
   }
   return pel;
 }
+// v7: when the state carries a CoM target (st.com), the pelvis is translated until the whole-body CoM (segment
+// masses, loco.js) sits on it. v7 feet are given by the BALL of the foot (toe joint): the heel rises by rotating the
+// foot about the ball, so a heel-off foot stays pinned at the ball. heel:"auto" raises the heel just enough that the
+// leg stays below 95 % reach (the plantarflexion push); a lift beyond the toe-pivot range takes the whole foot up.
+const PMAX = 50;
+function toeGeom(ch, s) { const S = s.toUpperCase(), a = ch.H(`${S} Foot`), b = ch.H(`${S} Toe0`); return { x: b[0] - a[0], y: b[1] - a[1], z: b[2] - a[2] }; }
+function footFromBall(ch, s, f) {   // ball-of-foot target (x,z) + lift -> ankle target (x,z), lift, pitch
+  const g = toeGeom(ch, s), lift = f.lift || 0;
+  const lp = (p) => { const r = p / DEG; return -(g.y * Math.cos(r) - g.z * Math.sin(r)) + g.y; };   // ankle rise that keeps the ball on the floor
+  // note: Rx(p) maps (y,z) -> (y cos - z sin, y sin + z cos); ball height = ankleH + lift + y'
+  // exact toe-pivot pitch up to 15 deg, then linear in lift (ball within ~2 mm of the floor up to 30 deg), soft cap 45 deg (C-infinity, no singularity)
+  const P1 = 15, l1 = lp(P1);
+  const dl = (lp(P1 + 0.01) - lp(P1 - 0.01)) / 0.02;            // d lift / d pitch at 35 deg
+  let pl;
+  if (lift <= 0) pl = 0;
+  else if (lift < l1) { let lo = 0, hi = P1; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (lp(m) < lift) lo = m; else hi = m; } pl = (lo + hi) / 2; }
+  else pl = P1 + (lift - l1) / dl;
+  const Pc = 48, kq = 9, p = pl <= 0 ? 0 : -kq * Math.log(Math.exp(-pl / kq) + Math.exp(-Pc / kq));
+  const r = p / DEG, zl = g.y * Math.sin(r) + g.z * Math.cos(r), xl = g.x;
+  const yq = qaxis([0, 1, 0], f.yaw ?? 0), off = qrot(yq, [xl, 0, zl]);
+  return { ...f, foot: [f.foot[0] - off[0], f.foot[1] - off[2]], lift, pitch: p, ball: f.foot };
+}
 export function poseFromState(ch, st, grip) {
+  if (!st.com) return poseCore(ch, st, grip);
+  const D = trunkD(st.trunk); let pel = st.trunk.pelvis.slice(), r = null, c = null;
+  const feetAt = (pelP) => { const feet = {};
+    for (const s of ["r", "l"]) { const f0 = st.feet[s]; let f = footFromBall(ch, s, f0);
+      if (f0.heel === "auto") {         // lift the heel (about the ball) until the leg is at 96.5 % reach; soft onset
+        const hip = add(pelP, qrot(D.pelvis, sub(ch.H(`${s.toUpperCase()} Thigh`), ch.pelvis0)));
+        const Lm = 0.965 * (ch.L[`${s}_thigh`] + ch.L[`${s}_shin`]), base = f0.lift || 0;
+        const dist = (dl) => { const g = footFromBall(ch, s, { ...f0, lift: Math.max(0, base + dl) }); return len(sub([g.foot[0], ch.ankleH + g.lift, g.foot[1]], hip)) - Lm; };
+        // signed extra lift needed: bisection when the flat foot over-reaches, linear extension (same slope) when not,
+        // so req(t) is smooth through the onset; the soft-plus then gives a smooth heel rise
+        const d0 = dist(0); let req;
+        if (d0 > 0) { let lo = 0, hi = 0.6; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (dist(m) > 0) lo = m; else hi = m; } req = (lo + hi) / 2; }
+        else { const sl = (dist(0.002) - d0) / 0.002; req = -d0 / Math.min(sl, -0.2); }
+        const kk = 0.02, extra = req > 20 * kk ? req : kk * Math.log1p(Math.exp(req / kk));
+        f = footFromBall(ch, s, { ...f0, lift: base + extra });
+      }
+      feet[s] = f; }
+    return feet; };
+  let feet = st.feet;
+  for (let it = 0; it < 8; it++) {
+    feet = feetAt(pel);
+    r = poseCore(ch, { ...st, trunk: { ...st.trunk, pelvis: pel }, feet }, grip);
+    c = comOf(ch, r.pos, r.racket); const e = sub(st.com, c);
+    if (len(e) < 2e-5 && it > 1) break; pel = add(pel, mul(e, 1.15));
+  }
+  r.info.com = c; r.info.comTarget = st.com; r.info.feet = feet; r.info.pelvisIn = pel;
+  return r;
+}
+export function poseCore(ch, st, grip) {
   const D = trunkD(st.trunk); const pel = lowerPelvis(ch, D, st.trunk.pelvis, st.feet);
   const hipOf = (pelPos, s) => add(pelPos, qrot(D.pelvis, sub(ch.H(`${s} Thigh`), ch.pelvis0)));
   const ankleT = (f) => [f.foot[0], ch.ankleH + (f.lift || 0), f.foot[1]];
@@ -327,7 +378,7 @@ export function poseFromState(ch, st, grip) {
     const K = add(hip, add(mul(u, aa), mul(pp, hh)));
     const th = norm(sub(K, hip)), sh = norm(sub(add(hip, mul(u, d)), K));
     D[`${s}_thigh`] = basis(th, pp); D[`${s}_shin`] = basis(sh, pp);
-    const pitch = Math.asin(Math.min(0.6, (f.lift || 0) / 0.16)) * DEG;
+    const pitch = f.pitch !== undefined ? f.pitch : Math.asin(Math.min(0.6, (f.lift || 0) / 0.16)) * DEG;
     D[`${s}_foot`] = qmul(qaxis([0, 1, 0], f.yaw), qaxis([1, 0, 0], pitch));
     info.legs[s] = { knee: Math.acos(Math.max(-1, Math.min(1, dot(th, sh)))) * DEG, kneeDir: pp, facing, pitch, th };
   }
@@ -386,6 +437,7 @@ export function armBounds(ch, full = false) {
   const m = (a, k = 6) => [a[0] + k, a[1] - k];      // keys stay 6 deg inside each limit (frames may use the margin smoothly)
   return { az: [-r.shoulderBack + 6, 90 + r.shoulderCross - 6], el: [0, 165], rot: m(r.shoulderRot), elbow: [r.elbow[0] + 2, r.elbow[1] - 6], pron: m(r.pron), wflex: m(r.wflex), wdev: m(r.wdev, 4) };
 }
+import { makeLoco, comOf } from "./loco.js";
 export const PK = ["az", "el", "rot", "elbow", "pron", "wflex", "wdev"];
 function angOf(a, b) { return Math.acos(Math.max(-1, Math.min(1, dot(norm(a), norm(b))))) * DEG; }
 export function optimizeArm(ch, side, Dchest, shoulderPos, target, init, grip, extra = {}, prevJ = null, steps = [16, 8, 4, 2, 1, 0.5, 0.25], bounds = null) {
@@ -509,6 +561,7 @@ export function solveKey(ch, p, grip, opts = {}, prev = null) {
     const s2 = solveArm(ch, "l", D.chest, shL, la.hand, null, norm(la.pole), pref);
     lOpt = optimizeArm(ch, "l", D.chest, shL, { wrist: la.hand, pole: norm(la.pole), pref, contW: 1.0, prior: 1 }, anglesToParams(ch, "l", s2.J), null, {}, prev ? prev.arms.l : null);
   }
+  if (p.r_pins) for (const k in p.r_pins) rOpt.J[k] = p.r_pins[k];   // joint-angle keys (e.g. racket drop: rot 170, elbow 100)
   return { trunk: { pelvis: p.pelvis, yaw: p.yaw, lean: p.lean, chest_yaw: p.chest_yaw, chest_roll: p.chest_roll || 0, head_pitch: p.head_pitch, head_yaw: p.head_yaw || 0 },
            arms: { r: rOpt.J, l: lOpt.J }, diag: { r: { cost: rOpt.cost, seed }, l: { cost: lOpt.cost } } };
 }
@@ -551,7 +604,7 @@ export function makeGrip(ch, tech, sport, layer) {
 }
 export function compileTechnique(ch, tech, sport, layer, opts = {}) {
   const ph = tech.phases, T = ph.map((p) => p.t);
-  const grip = makeGrip(ch, tech, sport, layer), rk = grip.rk;
+  const grip = makeGrip(ch, tech, sport, layer), rk = grip.rk; const LOCO = makeLoco(tech);
   const iC = ph.findIndex((p) => p.name === (tech.contact?.phase || "contact")); const tc = T[iC];
   const keyPose = ph.map((P, i) => { const q = JSON.parse(JSON.stringify(P.pose));
     if (opts.contactHeight && i === iC) { q.racket.center[1] += opts.contactHeight; q.pelvis[1] += opts.contactHeight * 0.25; }
@@ -576,7 +629,7 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
       const trunk = { pelvis: pf.map((f) => f(t)) }; for (const k in tf) trunk[k] = tf[k](t);
       const arms = {}; for (const s of ["r", "l"]) { const J = {}; for (const k of PK) J[k] = soft(af[s][k](t), bd[k][0], bd[k][1], 6); arms[s] = J; }
       const feet = Object.fromEntries(["r", "l"].map((s) => [s, { foot: [ff[s].x(t), ff[s].z(t)], yaw: ff[s].yaw(t), lift: ff[s].lift(t) }]));
-      return { trunk, arms, feet, twoHand: th(t) };
+      const st = { trunk, arms, feet, twoHand: th(t) }; return LOCO ? LOCO.apply(t, st) : st;
     };
   };
   let at = build();
@@ -603,6 +656,7 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
     FT.splice(i, 0, { r: st.feet.r, l: st.feet.l, th: st.twoHand });
     at = build();
   }
+  if (tech.micro) at = microLayer(at, tech.micro, tc, T[0], T[T.length - 1]);
   let solve = (t) => poseFromState(ch, at(t), grip); let bakeOut = null;
   if (grip.L) {   // two-handed = closed chain: both arms solved TOGETHER at dense keys (1/30 s) by box-projected
                   // Levenberg-Marquardt over the 14 joint angles. Hard terms: second-hand fist on the handle axis inside its slide
@@ -739,7 +793,45 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
     return add(p0, mul(sub(p1, p0), Math.min(1, Math.max(0, (rel - t0) / ((t1 - t0) || 1))))); };
   const tr0 = T[Math.max(0, ph.findIndex((p) => p.name === (tech.trail?.from || ph[1].name)))], tr1 = T[ph.findIndex((p) => p.name === (tech.trail?.to || ph[ph.length - 2].name))];
   const trail = []; for (let t = tr0; t <= tr1 + 1e-9; t += 1 / 240) trail.push([t, solve(t).racket.center]);
-  return { id: tech.id, T, t0: T[0], t1: T[T.length - 1], tc, speed, solve, at: grip.L ? ((t) => { const r = solve(t); return { ...at(t), twoHand: at(t).twoHand }; }) : at, ballAt, ballIn, ballOut, contact: C, tIn0, tOut1, trail, phases: ph, tA, tB, grip, keys, rk, bake: bakeOut };
+  return { id: tech.id, T, t0: T[0], t1: T[T.length - 1], tc, speed, solve, at: grip.L ? ((t) => { const r = solve(t); return { ...at(t), twoHand: at(t).twoHand }; }) : at, ballAt, ballIn, ballOut, contact: C, tIn0, tOut1, trail, phases: ph, tA, tB, grip, keys, rk, bake: bakeOut, loco: LOCO };
+}
+
+// ------------------------------------------------------------------ micro-motion layer (v7m)
+// Optional per technique (tech.micro). Works on the joint-space state, so every downstream constraint (grip, IK
+// feet, CoM) still applies. Parts:
+//   warp   overlapping action: each arm group samples its own spline through a monotone time warp that keeps the
+//          window ends and contact fixed and moves that group's speed peak from tOld to tNew (proximal first,
+//          distal last). groups: shoulder = az, el, rot; elbow = elbow; wrist = wflex, wdev, pron
+//   layback  wrist extension bump (deg) that lags the forearm into the drop and releases into contact
+//   sway   small breathing / balance sway in the ready holds (deg), zero at the loop ends so the loop stays seamless
+const MICRO_GROUPS = { shoulder: ["az", "el", "rot"], elbow: ["elbow"], wrist: ["wflex", "wdev", "pron"] };
+export function microWarp(ta, tOld, tNew, tc, tb, sg = 0.018) {
+  if (!(ta < tOld && tOld < tc && ta < tNew && tNew < tc)) return (t) => t;
+  const X = [ta, tNew, tc, tb], Y = [ta, tOld, tc, tb], n = 3, d = [], m = [1, 0, 0, 1];
+  for (let i = 0; i < n; i++) d.push((Y[i + 1] - Y[i]) / (X[i + 1] - X[i]));
+  for (let i = 1; i < n; i++) { const w1 = 2 * (X[i + 1] - X[i]) + (X[i] - X[i - 1]), w2 = (X[i + 1] - X[i]) + 2 * (X[i] - X[i - 1]); m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]); }
+  for (let i = 0; i < n; i++) { const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b; if (h > 9) { const s3 = 3 / Math.sqrt(h); m[i] = s3 * a * d[i]; m[i + 1] = s3 * b * d[i]; } }   // Fritsch-Carlson: stays monotone
+  const H = hermite(X, Y, m), raw = (t) => (t <= ta || t >= tb ? t : H(t));
+  // C2: Gaussian-smooth the C1 warp (sigma 18 ms) so no acceleration step appears at the knots; stays monotone
+  const dt = 1 / 960, ts = [], ws = [], KN = Math.ceil(3 * sg / dt);
+  for (let t = ta - 0.08; t <= tb + 0.08 + 1e-9; t += dt) { let a = 0, z = 0; for (let k = -KN; k <= KN; k++) { const e = Math.exp(-0.5 * (k * dt / sg) ** 2); a += e * raw(t + k * dt); z += e; } ts.push(t); ws.push(a / z); }
+  const Sm = clampedSpline(ts, ws), lo = ts[0], hi = ts[ts.length - 1];
+  return (t) => (t <= lo || t >= hi ? t : Sm(t));
+}
+function microLayer(at, M, tc, t0, t1) {
+  const ta = M.window?.[0] ?? tc - 0.4, tb = tc + (M.window?.[1] ?? 0.25);
+  const W = {}; for (const g in MICRO_GROUPS) { const w = M.warp?.[g]; W[g] = w ? microWarp(ta, tc + w[0] / 1000, tc + w[1] / 1000, tc, tb, (M.sigma_ms ?? 18) / 1000) : null; }
+  const bump = (t, c, wd) => { const u = (t - c) / wd; return Math.abs(u) >= 1 ? 0 : (0.5 * (1 + Math.cos(Math.PI * u))) ** 2; };
+  return (t) => {
+    const st = at(t);
+    for (const g in MICRO_GROUPS) { if (!W[g]) continue; const tw = W[g](t); if (tw === t) continue;
+      const src = at(tw).arms.r; for (const k of (M.groups?.[g] || MICRO_GROUPS[g])) st.arms.r[k] = src[k]; }
+    if (M.layback) { const [deg, cms, wms] = M.layback; st.arms.r.wflex -= deg * bump(t, tc + cms / 1000, wms / 1000); }
+    if (M.sway) { const [deg, hold] = M.sway, env = (t < t0 + hold ? Math.sin(Math.PI * (t - t0) / hold) ** 2 : 0) + (t > t1 - hold ? Math.sin(Math.PI * (t1 - t) / hold) ** 2 : 0);
+      if (env > 0) { st.trunk.lean += deg * env * Math.sin(2 * Math.PI * (t - t0) / hold); st.trunk.chest_yaw += 0.6 * deg * env * Math.sin(4 * Math.PI * (t - t0) / hold);
+        st.trunk.head_pitch += 0.5 * deg * env * Math.sin(2 * Math.PI * (t - t0) / hold + 1); } }
+    return st;
+  };
 }
 export function timeTable(comp, fps = 240, globalSpeed = 1, includeReal = false) {
   const rows = []; let t = comp.t0;
