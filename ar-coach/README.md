@@ -123,3 +123,7 @@ The wrist-height band for each shot (`release.json` → `contact_low`, `relHeigh
 - The web camera usually tops out at 30 to 60 fps, and iOS has no exposure lock, thermal state or battery API. The bench page shows what the phone actually gives you.
 - Checked in headless Chromium (CPU WASM, no GPU): the full UI flow worked on the mock and onnx engines, and RTMPose-s keypoints matched a rendered bandeja clip. Real phone fps is still unmeasured: run the bench page on the phones.
 - RTMPose body7 weights: licence audit still pending (see Path to production, blocker 4).
+
+## Smoke test (2026-11-07)
+14 tests run in parallel in headless Chromium with the real RTMPose-s engine (WASM) and a padel clip as the camera: home, shadow, ball machine, gadget, wall, lesson, drill sets, practice link, review a video, summary chat, inbox export, ideal swings library, Strike Player page, feasibility page. 14 of 14 pass. Not yet run on a real phone.
+New: voice question in live (🎤, browser speech recognition, no AI): "show me the last one", "replay 2", "how was that?". Chat filters: low, high, slow, fast, on target.

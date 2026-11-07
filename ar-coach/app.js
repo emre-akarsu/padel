@@ -203,6 +203,19 @@ function onStroke(s) {
 
 $('#startBtn').onclick = () => { engine && engine.reset(); L.strokes = []; L.running = true; L.start = Date.now(); $('#setup').hidden = true; $('#hCount').textContent = '0'; say('Go'); };
 $('#ghostBtn').onclick = () => L.ghostOn = !L.ghostOn;
+/* voice questions during live: browser speech recognition (free, no AI); answers come from the same template chat */
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+function liveAsk(q) {
+  let shown = false;
+  const ctx = { strokes: L.strokes || [], prev: null, shot: S.shot, band: (id, sh) => band(id, sh), shotName, drills: [],
+    replay: n => { const s = L.strokes[n - 1]; if (!s || !s._frames) return false; openReplay(s, { frames: s._frames }); shown = true; return true; } };
+  const [a] = PadelChat.answer(q, ctx); flashCue('“' + q + '” · ' + a); if (!shown) say(a); return a;
+}
+window.PadelLiveAsk = liveAsk;
+if (SR) { $('#micBtn').hidden = false; $('#micBtn').onclick = () => {
+  const r = new SR(); r.lang = navigator.language || 'en-US'; r.interimResults = false; r.maxAlternatives = 1;
+  $('#micBtn').classList.add('primary'); r.onresult = e => liveAsk(e.results[0][0].transcript); r.onend = () => $('#micBtn').classList.remove('primary');
+  r.onerror = e => flashCue('Voice: ' + e.error); try { r.start(); } catch { } }; }
 $('#flipBtn').onclick = () => { L.facing = L.facing === 'user' ? 'environment' : 'user'; openCam(); };
 $('#lastReplay').onclick = () => L.lastStroke && openReplay(L.lastStroke, { frames: L.lastStroke._frames });
 $('#stage').onclick = e => { // tap to pick the player
@@ -316,7 +329,7 @@ function renderSummary() {
     const h = stats(x.strokes.map(s => s.metrics.contactHeightM)), tp = stats(x.strokes.map(s => s.metrics.tempoS));
     const rows = REL.checks.filter(d => d.status !== 'hidden').map(d => { const cs = x.strokes.flatMap(s => s.checks.filter(c => c.id === d.id && c.pass !== null)); if (!cs.length) return ''; const st = stats(cs.map(c => c.value)); return `<tr><td>${esc(d.label)}</td><td>${fmt(st.mean, d.unit === 'deg' ? 0 : 2)} ${d.unit === 'bool' ? '' : d.unit}</td><td>${cs.filter(c => c.pass).length}/${cs.length} in target</td></tr>`; }).join('');
     return `<div class="card"><div class="bar"><b class="grow">${new Date(x.start).toLocaleString()} · ${esc(x.mode)} · ${esc(shotName(x.shot))}</b><span class="muted small">${esc(x.engine)}</span></div>
-      <p><b>${countTxt(x.strokes.length)}</b> strokes in ${Math.max(1, Math.round((x.end - x.start) / 60000))} min.
+      <p><b>${countTxt(x.strokes.length)}</b> stroke${x.strokes.length === 1 ? "" : "s"} in ${Math.max(1, Math.round((x.end - x.start) / 60000))} min.
       ${h ? `Contact height ${fmt(h.min, 2)}-${fmt(h.max, 2)} m (mean ${fmt(h.mean, 2)}).` : ''} ${tp ? `Tempo ${fmt(tp.mean, 2)} ± ${fmt(tp.sd, 2)} s${tp.sd < .12 ? ', steady' : ''}.` : ''}</p>
       ${rows ? `<table><tr><th>Measure</th><th>Mean</th><th>Target band</th></tr>${rows}</table>` : ''}</div>`;
   }).join('') + '<p class="muted small">Numbers only. Faults are drafts for your coach until each check passes its release gate.</p>';
@@ -366,7 +379,7 @@ $('#upFile').onchange = async e => {
     await getEngine('review');
     const ac = new AbortController(); L.sessionId = 'U' + Date.now().toString(36); L.mode = 'review';
     const res = await engine.analyzeVideo(file, { onProgress: p => st.textContent = `Analysing ${Math.round(p * 100)}%`, signal: ac.signal });
-    st.textContent = `${res.strokes.length} strokes in ${fmt(res.durationS, 1)} s (${res.engine.name})`;
+    st.textContent = `${res.strokes.length} stroke${res.strokes.length === 1 ? "" : "s"} in ${fmt(res.durationS, 1)} s (${res.engine.name})`;
     const v = document.createElement('video'); v.src = URL.createObjectURL(file); v.playsInline = true; v.muted = true; v.preload = 'auto';
     await new Promise(r => v.onloadeddata = r);
     for (const s of res.strokes) { // contact thumbnails for the inbox
@@ -393,7 +406,11 @@ if ('serviceWorker' in navigator) { const had = !!navigator.serviceWorker.contro
   REL = await fetch('release.json').then(r => r.json());
   await PadelGhost.load();
   renderHome();
-  const h = location.hash.slice(1); if (['upload', 'summary', 'inbox', 'drills'].includes(h)) show(h);
-  const pr = h.match(/^practice=(\w+)/), sh = pr && Object.keys(PadelGhost.specs.shots).find(k => k === pr[1] || PadelGhost.specs.shots[k].strikeId === pr[1]);
-  if (sh) { S.shot = sh; saveS(); renderHome(); }
+  route(); window.addEventListener('hashchange', route);
 })();
+// #upload | #summary | #inbox | #drills, or #practice=<shot or strikeId> (from Ideal swings): picks the shot and opens shadow practice
+function route() {
+  const h = location.hash.slice(1); if (['upload', 'summary', 'inbox', 'drills'].includes(h)) return show(h);
+  const pr = h.match(/^practice=(\w+)/), sh = pr && Object.keys(PadelGhost.specs.shots).find(k => k === pr[1] || PadelGhost.specs.shots[k].strikeId === pr[1]);
+  if (sh) { S.shot = sh; DR = null; saveS(); renderHome(); history.replaceState(null, '', location.pathname); show('shadow'); }
+}
