@@ -86,7 +86,9 @@ async function startLive(mode) {
   $('#setupList').innerHTML = tips.map(t => `<li>${t}</li>`).join('') + '<li id="fbStat">Full body: checking...</li>';
   $('#hCount').textContent = '0'; ['#hTempo', '#hHeight', '#hPhase'].forEach(s => $(s).textContent = '-');
   const b = band('contact_low', S.shot); $('#hHeightL').textContent = 'contact m' + (b && gate('contact_low').show ? ` (${b[0]}-${b[1]})` : '');
-  try { await getEngine(mode); } catch (e) { $('#setupStatus').textContent = 'Engine error: ' + e.message + '. Switch engine in Settings.'; return; }
+  $('#setupStatus').textContent = S.engine === 'onnx' ? 'Loading the pose model (22 MB the first time, then cached)…' : 'Starting…';
+  try { await getEngine(mode); } catch (e) { $('#setupStatus').textContent = 'Engine error: ' + e.message + '. Try again, or pick "mock" in Settings → Engine.'; console.error(e); return; }
+  $('#setupStatus').textContent = 'Ready: ' + engine.info.name;
   if (!engine.info.capabilities.live) { $('#setupStatus').textContent = engine.info.name + ' is upload-only. Pick mock or onnx in Settings.'; return; }
   await openCam();
   try { L.wake = await navigator.wakeLock?.request('screen'); } catch { }

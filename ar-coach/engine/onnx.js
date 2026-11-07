@@ -67,10 +67,17 @@
         Object.assign(o, p || {}); an = PadelCore.createAnalyzer(o); info.capabilities.checks = (o.checks || []).map(c => c.id);
         if (pose) return;
         await loadScript(ORT);
-        ort.env.wasm.numThreads = Math.min(4, navigator.hardwareConcurrency || 2);
-        const eps = (o.provider === 'webgpu' && navigator.gpu) ? ['webgpu', 'wasm'] : ['wasm'];
-        pose = await ort.InferenceSession.create(o.poseUrl, { executionProviders: eps, graphOptimizationLevel: 'all' });
-        ep = eps[0];
+        ort.env.wasm.numThreads = self.crossOriginIsolated ? Math.min(4, navigator.hardwareConcurrency || 2) : 1;
+        // Try WebGPU with a warm-up inference (shader compile happens here, not on the first camera frame);
+        // on any failure or a hang (seen on some mobile GPUs), fall back to WASM so the app always runs.
+        const warm = async s => { const t = new ort.Tensor('float32', new Float32Array(3 * 256 * 192), [1, 3, 256, 192]); await s.run({ [s.inputNames[0]]: t }); };
+        const timeout = (pr, ms) => Promise.race([pr, new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), ms))]);
+        const buf = await fetch(o.poseUrl).then(r => { if (!r.ok) throw new Error('Pose model download failed: HTTP ' + r.status); return r.arrayBuffer(); });
+        if (o.provider === 'webgpu' && navigator.gpu) {
+          try { const s = await timeout(ort.InferenceSession.create(buf, { executionProviders: ['webgpu'], graphOptimizationLevel: 'all' }), 30000); await timeout(warm(s), 30000); pose = s; ep = 'webgpu'; }
+          catch (e) { console.warn('WebGPU pose failed, using WASM', e); info.fallback = String(e && e.message || e); }
+        }
+        if (!pose) { pose = await ort.InferenceSession.create(buf, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' }); await warm(pose); ep = 'wasm'; }
         info.name = 'onnx-rtmpose-s (' + ep + ')';
         if (o.detUrl) try { det = await ort.InferenceSession.create(o.detUrl, { executionProviders: eps }); info.name += ' + rtmdet'; } catch (e) { console.warn('detector not loaded, using keypoint tracking', e); }
       },
