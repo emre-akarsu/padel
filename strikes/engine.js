@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { createCharacter, compileTechnique, timeTable, ANCHOR } from "./solver.js?v=3";
+import { loadLayer, compileTechnique, timeTable } from "./solver.js?v=6";
 
 const $ = (id) => document.getElementById(id);
 const stage = $("stage");
@@ -45,8 +45,9 @@ function buildCourt(c) {
 const world = new THREE.Group(); scene.add(world);           // mirrored (scale.x = -1) for left-handers
 const fx = new THREE.Group(); world.add(fx);
 let ch, bones = {}, restQ = {}, armRoot;
-const skel = await (await fetch("assets/skeleton.json")).json();
-ch = createCharacter(skel);
+// shared layer: body profile (bone map, ROM), implements, grips -> see specs/README.md
+const { ch: chL, layer } = await loadLayer(async (p) => (await fetch(p)).json());
+ch = chL;
 const gltf = await new GLTFLoader().loadAsync("assets/player.glb");
 world.add(gltf.scene);
 gltf.scene.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } if (o.isBone) bones[o.name] = o; });
@@ -62,7 +63,7 @@ function applyPose(res) {
     const w = Q(res.delta[b.name]).multiply(restQ[b.name]); wq[b.name] = w;
     const pq = b.parent ? wq[b.parent] : new THREE.Quaternion();
     o.quaternion.copy(pq.clone().invert().multiply(w));
-    if (!b.parent || ANCHOR[b.name]) {
+    if (!b.parent || ch.anchor[b.name]) {
       const pp = b.parent ? res.pos[b.parent] : [0, 0, 0];
       const v = new THREE.Vector3(res.pos[b.name][0] - pp[0], res.pos[b.name][1] - pp[1], res.pos[b.name][2] - pp[2]).applyQuaternion(pq.clone().invert());
       o.position.copy(v);
@@ -89,26 +90,14 @@ const flash = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0
 fx.add(flash);
 let trailObj, inObj, outObj;
 // tennis racket (procedural): local -Y = handle-to-head direction from the wrist, +Z = face normal; head centre 0.44 m
-const padelRacket = []; gltf.scene.traverse((o) => { if (o.isMesh && /racket/i.test(o.name)) padelRacket.push(o); });
-const tennisRacket = (() => {
-  const g = new THREE.Group(), frame = new THREE.MeshStandardMaterial({ color: 0x1b1f24, roughness: 0.35, metalness: 0.2 });
-  const grip = new THREE.Mesh(new THREE.CylinderGeometry(0.016, 0.015, 0.21, 8), new THREE.MeshStandardMaterial({ color: 0xf2f2f0, roughness: 0.8 }));
-  grip.position.y = -0.03; g.add(grip);
-  const pts = []; for (let i = 0; i <= 64; i++) { const a = (i / 64) * Math.PI * 2; pts.push(new THREE.Vector3(0.135 * Math.cos(a), -0.44 + 0.17 * Math.sin(a), 0)); }
-  g.add(new THREE.Mesh(new THREE.TubeGeometry(new THREE.CatmullRomCurve3(pts, true), 64, 0.009, 6, true), frame));
-  for (const sx of [-1, 1]) { const th = new THREE.Mesh(new THREE.CylinderGeometry(0.007, 0.007, 0.16, 6), frame);
-    th.position.set(sx * 0.03, -0.205, 0); th.rotation.z = sx * 0.28; g.add(th); }
-  const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d"); x.strokeStyle = "rgba(235,235,225,.9)"; x.lineWidth = 2;
-  for (let i = 4; i < 128; i += 9) { x.beginPath(); x.moveTo(i, 0); x.lineTo(i, 128); x.stroke(); x.beginPath(); x.moveTo(0, i); x.lineTo(128, i); x.stroke(); }
-  const strings = new THREE.Mesh(new THREE.CircleGeometry(1, 40), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true, side: THREE.DoubleSide, depthWrite: false }));
-  strings.scale.set(0.13, 0.165, 1); strings.position.y = -0.44; g.add(strings);
-  g.traverse((o) => { if (o.isMesh) o.castShadow = true; }); g.visible = false; fx.add(g); return g;
-})();
-const _m = new THREE.Matrix4();
-function placeRacket(rk) {
-  const y = new THREE.Vector3(...rk.dir).negate(), z = new THREE.Vector3(...rk.normal), x = new THREE.Vector3().crossVectors(y, z);
-  _m.makeBasis(x, y, z); tennisRacket.quaternion.setFromRotationMatrix(_m); tennisRacket.position.set(...rk.wrist);
+// implement models (implements/<id>.json -> model): placed rigidly from the solved grip socket every frame
+const implModels = {};
+for (const [id, impl] of Object.entries(layer.implements)) {
+  const g = await new GLTFLoader().loadAsync(impl.model.replace(/^\.\.\//, ""));
+  g.scene.traverse((o) => { if (o.isMesh) o.castShadow = true; }); g.scene.visible = false; g.scene.userData.keep = true; fx.add(g.scene); implModels[id] = g.scene;
 }
+let racketObj = null;
+function placeRacket(rk) { if (!racketObj) return; racketObj.position.set(...rk.origin); racketObj.quaternion.set(rk.R[0], rk.R[1], rk.R[2], rk.R[3]); }
 
 // ---------------------------------------------------------------- state / UI
 const state = { sports: {}, sport: null, tech: null, comp: null, table: [], idx: 0, playing: true, speed: 1, slow: null, hand: "R",
@@ -134,7 +123,8 @@ selSport.onchange = () => { fillTech(); load(); }; selTech.onchange = () => load
 function load() {
   state.sport = state.sports[selSport.value]; state.tech = state.sport.techniques.find((t) => t.id === selTech.value);
   buildCourt(state.sport.court); compile();
-  const tennis = state.sport.implement?.model === "tennis"; tennisRacket.visible = tennis; for (const m of padelRacket) m.visible = !tennis;
+  for (const o of Object.values(implModels)) o.visible = false;
+  racketObj = implModels[state.tech.implement || state.sport.implement] || null; if (racketObj) racketObj.visible = true;
   const t = state.tech; $("techname").textContent = t.name; $("techfam").textContent = `${state.sport.name} · ${t.family}`;
   $("techdesc").textContent = t.summary || ""; $("arbtn").hidden = !t.ar; if (t.ar) $("arbtn").href = t.ar;
   $("phases").innerHTML = t.phases.map((p, i) => `<li data-i="${i}"><b>${p.label || p.name}</b><span>${p.cue}</span></li>`).join("");
@@ -142,7 +132,7 @@ function load() {
 }
 function compile() {
   const t = state.tech; const rate = state.slow ?? t.slowmo?.rate ?? 1; $("slow").value = rate; $("slowv").textContent = `${rate.toFixed(2)}×`;
-  state.comp = compileTechnique(ch, t, state.sport, { slowRate: rate, contactHeight: state.contact });
+  state.comp = compileTechnique(ch, t, state.sport, layer, { slowRate: rate, contactHeight: state.contact });
   state.table = timeTable(state.comp, 240, state.speed, state.replay); state.idx = 0;
   for (const o of [trailObj, inObj, outObj]) if (o) fx.remove(o);
   const c = state.comp;
@@ -158,7 +148,7 @@ function phaseAt(t) {
 }
 function frame(i) {
   const c = state.comp; const [t, spd, part] = state.table[Math.min(state.table.length - 1, Math.max(0, i | 0))];
-  const res = c.solve(t); applyPose(res); if (tennisRacket.visible) placeRacket(res.racket);
+  const res = c.solve(t); applyPose(res); placeRacket(res.racket);
   const f = (t - c.trail[0][0]) / (c.trail[c.trail.length - 1][0] - c.trail[0][0]);
   trailObj.visible = state.trail; trailObj.reveal(f);
   inObj.visible = outObj.visible = state.trail;
@@ -187,7 +177,7 @@ fillTech();
 if (url.searchParams.get("sport")) selSport.value = url.searchParams.get("sport"), fillTech();
 if (url.searchParams.get("tech")) selTech.value = url.searchParams.get("tech");
 load();
-window.__strike = { state, frame, applyPose, compile, setView, load, renderer, scene, camera, controls, selSport, selTech, ready: true };
+window.__strike = { state, frame, applyPose, compile, setView, load, renderer, scene, camera, controls, selSport, selTech, fx, ready: true };
 // loop
 function resize() { const r = stage.getBoundingClientRect(); renderer.setSize(r.width, r.height, false); camera.aspect = r.width / r.height; camera.updateProjectionMatrix(); }
 new ResizeObserver(resize).observe(stage); resize();

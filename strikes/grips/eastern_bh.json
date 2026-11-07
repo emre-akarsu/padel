@@ -1,0 +1,1 @@
+{ "id": "eastern_bh", "description": "Palm on top of the handle: one-handed topspin backhand.", "bevel_deg": -90, "handle_tilt_deg": 16, "fist_offset_m": { "palm": 0.031, "along_fingers": 0.060 }, "fingers": "wrap" }

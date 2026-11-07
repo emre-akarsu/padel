@@ -1,0 +1,1 @@
+{ "id": "semi_western_fh", "description": "Palm under the handle: closes the face for topspin forehands.", "bevel_deg": 35, "handle_tilt_deg": 16, "fist_offset_m": { "palm": 0.031, "along_fingers": 0.060 }, "fingers": "wrap" }

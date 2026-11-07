@@ -1,9 +1,16 @@
-// Strike solver: high-level phase targets -> per-bone rotations for the Rocketbox (Bip01) character.
-// Dependency-free so it runs in the browser (three.js page) and in Node (smoothness check, AR baking).
-// Frame (same as demos/ar_swing/rig.json and glTF): Y up, player faces +Z (the net), player's right side is -X.
-// Quaternions are [x, y, z, w]. Angles in specs are degrees, distances metres, times seconds.
+// Strike solver v6: anatomical arm model + rigid grip socket.
+// Dependency-free (browser + Node). Frame: Y up, player faces +Z (net), player's right = -X. Quaternions [x,y,z,w].
+//
+// Arm chain (per side), in the rig frame used by v2-v5 (every limb bone A-aligned to point down at rest):
+//   D_upper = D_chest * R_shoulder                       (3 DOF, humeral rotation limited)
+//   D_fore  = D_upper * Rx(-elbow) * Ry(k * pron)        (elbow flexion 2..145 deg; part of the pronation on the forearm bone)
+//   D_hand  = D_upper * Rx(-elbow) * Ry(pron) * Swing(wrist_flex, wrist_dev)
+//   racket  = D_hand * G (grip socket rotation), origin at wrist + D_hand * g      -> the racket is a RESULT of the joints
+// Phase keys give racket targets; the key solve inverts the socket, runs two-bone IK and searches the elbow swivel so
+// that shoulder / pronation / wrist stay inside their ranges; leftovers are clamped (racket orientation then follows).
+// Between keys the joint angles are interpolated (C2), so every frame is anatomical by construction.
 
-// ------------------------------------------------------------------ vector / quaternion helpers
+// ------------------------------------------------------------------ math
 const add = (a, b) => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const mul = (a, s) => [a[0] * s, a[1] * s, a[2] * s];
@@ -12,383 +19,678 @@ const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a
 const len = (a) => Math.hypot(a[0], a[1], a[2]);
 const norm = (a) => { const l = len(a) || 1; return [a[0] / l, a[1] / l, a[2] / l]; };
 const qmul = (a, b) => [
-  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1],
-  a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
-  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3],
-  a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
+  a[3] * b[0] + a[0] * b[3] + a[1] * b[2] - a[2] * b[1], a[3] * b[1] - a[0] * b[2] + a[1] * b[3] + a[2] * b[0],
+  a[3] * b[2] + a[0] * b[1] - a[1] * b[0] + a[2] * b[3], a[3] * b[3] - a[0] * b[0] - a[1] * b[1] - a[2] * b[2]];
 const qinv = (q) => [-q[0], -q[1], -q[2], q[3]];
 const qrot = (q, v) => { const p = qmul(qmul(q, [v[0], v[1], v[2], 0]), qinv(q)); return [p[0], p[1], p[2]]; };
 const qaxis = (ax, deg) => { const a = norm(ax), h = deg * Math.PI / 360, s = Math.sin(h); return [a[0] * s, a[1] * s, a[2] * s, Math.cos(h)]; };
+const qnorm = (q) => { const l = Math.hypot(...q); return q.map((v) => v / l); };
 const QI = [0, 0, 0, 1];
-function qfrommat(x, y, z) {           // columns x, y, z
-  const m00 = x[0], m11 = y[1], m22 = z[2], t = m00 + m11 + m22;
-  let q;
+const DEG = 180 / Math.PI;
+function qfrommat(x, y, z) {
+  const t = x[0] + y[1] + z[2]; let q;
   if (t > 0) { const s = Math.sqrt(t + 1) * 2; q = [(y[2] - z[1]) / s, (z[0] - x[2]) / s, (x[1] - y[0]) / s, s / 4]; }
-  else if (m00 > m11 && m00 > m22) { const s = Math.sqrt(1 + m00 - m11 - m22) * 2; q = [s / 4, (y[0] + x[1]) / s, (z[0] + x[2]) / s, (y[2] - z[1]) / s]; }
-  else if (m11 > m22) { const s = Math.sqrt(1 + m11 - m00 - m22) * 2; q = [(y[0] + x[1]) / s, s / 4, (z[1] + y[2]) / s, (z[0] - x[2]) / s]; }
-  else { const s = Math.sqrt(1 + m22 - m00 - m11) * 2; q = [(z[0] + x[2]) / s, (z[1] + y[2]) / s, s / 4, (x[1] - y[0]) / s]; }
-  const l = Math.hypot(...q); return q.map((v) => v / l);
+  else if (x[0] > y[1] && x[0] > z[2]) { const s = Math.sqrt(1 + x[0] - y[1] - z[2]) * 2; q = [s / 4, (y[0] + x[1]) / s, (z[0] + x[2]) / s, (y[2] - z[1]) / s]; }
+  else if (y[1] > z[2]) { const s = Math.sqrt(1 + y[1] - x[0] - z[2]) * 2; q = [(y[0] + x[1]) / s, s / 4, (z[1] + y[2]) / s, (z[0] - x[2]) / s]; }
+  else { const s = Math.sqrt(1 + z[2] - x[0] - y[1]) * 2; q = [(z[0] + x[2]) / s, (z[1] + y[2]) / s, s / 4, (x[1] - y[0]) / s]; }
+  return qnorm(q);
 }
-// world rotation whose local -Y points along downDir and whose local +Z leans toward hint (as gen.py basis_quat)
-function basis(downDir, hint) {
-  const y = mul(norm(downDir), -1);
-  let z = sub(hint, mul(y, dot(hint, y)));
-  if (len(z) < 1e-4) z = cross(y, [1, 0, 0]);
-  z = norm(z); const x = cross(y, z);
-  return qfrommat(x, y, z);
+function basis(downDir, hint) {        // local -Y along downDir, local +Z toward hint
+  const y = mul(norm(downDir), -1); let z = sub(hint, mul(y, dot(hint, y)));
+  if (len(z) < 1e-6) z = cross(y, [1, 0, 0]); if (len(z) < 1e-6) z = cross(y, [0, 0, 1]);
+  z = norm(z); return qfrommat(cross(y, z), y, z);
 }
-function rotBetween(a, b) {            // minimal-arc rotation taking unit a to unit b (= Blender rotation_difference)
+function rotBetween(a, b) {
   a = norm(a); b = norm(b); const d = dot(a, b);
   if (d < -0.999999) { let ax = cross([1, 0, 0], a); if (len(ax) < 1e-6) ax = cross([0, 1, 0], a); return qaxis(ax, 180); }
-  const c = cross(a, b); const q = [c[0], c[1], c[2], 1 + d]; const l = Math.hypot(...q); return q.map((v) => v / l);
+  const c = cross(a, b); return qnorm([c[0], c[1], c[2], 1 + d]);
 }
-export const V = { add, sub, mul, dot, cross, len, norm, qmul, qinv, qrot, qaxis, basis };
+function swingTwist(q, axis) {          // q = swing * twist(axis); returns twist angle (deg, signed about axis)
+  const p = dot([q[0], q[1], q[2]], axis); let t = [axis[0] * p, axis[1] * p, axis[2] * p, q[3]];
+  const l = Math.hypot(...t); t = l < 1e-9 ? QI : t.map((v) => v / l);
+  return { twist: 2 * Math.atan2(dot([t[0], t[1], t[2]], axis), t[3]) * DEG, swing: qmul(q, qinv(t)) };
+}
+const wrapDeg = (a) => ((((a + 180) % 360) + 360) % 360) - 180;
+export const V = { add, sub, mul, dot, cross, len, norm, qmul, qinv, qrot, qaxis, basis, swingTwist, rotBetween };
 
-// ------------------------------------------------------------------ character model
-const B = "Bip01 ";
-const SEG = {   // rig segment -> bones driven by it (as v2-v4 retarget)
-  pelvis: ["Pelvis"], spine: ["Spine", "Spine1"], chest: ["Spine2", "L Clavicle", "R Clavicle"], neck: ["Neck", "Head"],
-  r_upper: ["R UpperArm"], r_fore: ["R Forearm"], r_hand: ["R Hand"], l_upper: ["L UpperArm"], l_fore: ["L Forearm"], l_hand: ["L Hand"],
-  r_thigh: ["R Thigh"], r_shin: ["R Calf"], r_foot: ["R Foot"], l_thigh: ["L Thigh"], l_shin: ["L Calf"], l_foot: ["L Foot"],
+// ------------------------------------------------------------------ ranges of motion: from the body profile (body/<id>.json)
+function romFrom(r) {
+  return { elbow: r.elbow_flexion, pron: r.forearm_pronation, wflex: r.wrist_flexion, wdev: r.wrist_deviation, shoulderRot: r.shoulder_rotation,
+    shoulderBack: r.shoulder_horizontal_extension_max, shoulderCross: r.shoulder_cross_body_max, chestYaw: r.chest_yaw, lean: r.lean, chestRoll: r.chest_roll,
+    neck: r.neck_pitch, knee: r.knee_flexion, hipFlex: r.hip_flexion, hipAbd: r.hip_abduction, ankle: r.ankle, valgus: r.knee_valgus_max };
+}
+const soft = (x, lo, hi, m = 10) => {    // smooth saturation into [lo, hi]; identity well inside the range
+  if (x > hi - m) return hi - m + m * Math.tanh((x - (hi - m)) / m);
+  if (x < lo + m) return lo + m + m * Math.tanh((x - (lo + m)) / m);
+  return x;
 };
-const ALIGN = {  // limb bones aligned to the rig's straight-down rest via the joint-to-joint direction
-  "R UpperArm": "R Forearm", "R Forearm": "R Hand", "R Hand": "R Finger2", "L UpperArm": "L Forearm", "L Forearm": "L Hand",
-  "L Hand": "L Finger2", "R Thigh": "R Calf", "R Calf": "R Foot", "L Thigh": "L Calf", "L Calf": "L Foot",
-};
-export const RACKET_CENTER = 0.33;   // sweet spot distance from the wrist along the racket (rig.json racket_center)
 
-export function createCharacter(skel, opt = {}) {
-  const bones = skel.bones.map((b) => ({ ...b }));
-  const by = Object.fromEntries(bones.map((b) => [b.name, b]));
-  const depth = (b) => (b.parent ? 1 + depth(by[b.parent]) : 0);
-  bones.sort((a, b) => depth(a) - depth(b));
-  const H = (n) => by[B + n].head;
-  const A = {};
-  for (const [bn, child] of Object.entries(ALIGN)) A[B + bn] = rotBetween(sub(H(child), H(bn)), [0, -1, 0]);
-  const segOf = {};
-  for (const [s, list] of Object.entries(SEG)) for (const n of list) segOf[B + n] = s;
-  const L = {
-    r_upper: len(sub(H("R Forearm"), H("R UpperArm"))), r_fore: len(sub(H("R Hand"), H("R Forearm"))),
-    l_upper: len(sub(H("L Forearm"), H("L UpperArm"))), l_fore: len(sub(H("L Hand"), H("L Forearm"))),
-    r_thigh: len(sub(H("R Calf"), H("R Thigh"))), r_shin: len(sub(H("R Foot"), H("R Calf"))),
-    l_thigh: len(sub(H("L Calf"), H("L Thigh"))), l_shin: len(sub(H("L Foot"), H("L Calf"))),
-  };
-  const ankleH = (H("R Foot")[1] + H("L Foot")[1]) / 2;
-  const pelvis0 = H("Pelvis");
-  // finger grip curl (world-rest axis = knuckle line, sign so fingers close toward the palm), as posing_rb
-  const curl = {};
-  const grip = opt.grip ?? { R: 1.0, L: 0.35 };
-  for (const s of ["R", "L"]) {
-    const h = H(`${s} Hand`), d = norm(sub(H(`${s} Finger2`), h));
-    let a = norm(sub(H(`${s} Finger1`), H(`${s} Finger4`))); a = norm(sub(a, mul(d, dot(a, d))));
-    const inward = norm([-h[0], 0, 0]); const n0 = norm(add(inward, [0, -1, 0]));
-    let n = cross(d, a); if (dot(n, n0) < 0) n = mul(n, -1);
-    const sgn = dot(cross(a, d), n) > 0 ? -1 : 1;
-    const ax = mul(a, sgn), k = grip[s];
-    for (const f of "1234") [55, 75, 45].forEach((deg, j) => { curl[B + `${s} Finger${f}${j ? j : ""}`] = qaxis(ax, deg * k); });
-    curl[B + `${s} Finger01`] = qaxis(ax, 25 * k); curl[B + `${s} Finger02`] = qaxis(ax, 30 * k);
+// ------------------------------------------------------------------ character (skeleton + body profile)
+// Internal logical names ("R Hand", "R Finger21", "Spine2", ...) are translated through the profile's bone_map,
+// so any character with the same joint set works by supplying its own body/<id>.json + skeleton file.
+function nameMap(bm) {
+  const m = { Pelvis: bm.pelvis, Spine: bm.spine[0], Spine1: bm.spine[1], Spine2: bm.chest_joint, Neck: bm.neck_joint, Head: bm.head };
+  const F = ["thumb", "index", "middle", "ring", "pinky"];
+  for (const [S, s] of [["R", "r"], ["L", "l"]]) {
+    Object.assign(m, { [`${S} Clavicle`]: bm[`${s}_clavicle`], [`${S} UpperArm`]: bm[`${s}_upper`], [`${S} Forearm`]: bm[`${s}_fore`], [`${S} Hand`]: bm[`${s}_hand`],
+      [`${S} Thigh`]: bm[`${s}_thigh`], [`${S} Calf`]: bm[`${s}_shin`], [`${S} Foot`]: bm[`${s}_foot`], [`${S} Toe0`]: bm[`${s}_toe`] });
+    F.forEach((f, i) => bm[`${s}_fingers`][f].forEach((n, j) => { m[`${S} Finger${i}${j ? j : ""}`] = n; }));
   }
-  return { bones, by, A, segOf, L, ankleH, pelvis0, curl, H };
+  return m;
+}
+export function createCharacter(skel, body) {
+  const map = nameMap(body.bone_map); const N = (l) => map[l] ?? l;
+  const bones = skel.bones.map((b) => ({ ...b })); const by = Object.fromEntries(bones.map((b) => [b.name, b]));
+  const depth = (b) => (b.parent ? 1 + depth(by[b.parent]) : 0); bones.sort((a, b) => depth(a) - depth(b));
+  const H = (n) => by[N(n)].head;
+  const ALIGN = { "R UpperArm": "R Forearm", "R Forearm": "R Hand", "R Hand": "R Finger2", "L UpperArm": "L Forearm", "L Forearm": "L Hand",
+    "L Hand": "L Finger2", "R Thigh": "R Calf", "R Calf": "R Foot", "L Thigh": "L Calf", "L Calf": "L Foot" };
+  const A = {}; for (const [bn, c] of Object.entries(ALIGN)) A[N(bn)] = rotBetween(sub(H(c), H(bn)), [0, -1, 0]);
+  const segOf = {}; for (const [seg, v] of Object.entries(body.bone_map)) {
+    if (!/^(pelvis|spine|chest|neck|[rl]_(upper|fore|hand|thigh|shin|foot))$/.test(seg)) continue;
+    for (const n of [].concat(v)) segOf[n] = seg;
+  }
+  const anchor = {}; for (const [k, v] of Object.entries(body.anchors || {})) anchor[body.bone_map[k]] = [].concat(body.bone_map[v])[0];
+  const L = {}; for (const s of ["r", "l"]) { const S = s.toUpperCase();
+    L[`${s}_upper`] = len(sub(H(`${S} Forearm`), H(`${S} UpperArm`))); L[`${s}_fore`] = len(sub(H(`${S} Hand`), H(`${S} Forearm`)));
+    L[`${s}_thigh`] = len(sub(H(`${S} Calf`), H(`${S} Thigh`))); L[`${s}_shin`] = len(sub(H(`${S} Foot`), H(`${S} Calf`))); }
+  // hand frames in the rig (hand-local) frame: fingers -Y, palm normal p0, radial (thumb-side) axis r0
+  const hand = {};
+  for (const S of ["R", "L"]) {
+    const h = H(`${S} Hand`), d = norm(sub(H(`${S} Finger2`), h));
+    let a = norm(sub(H(`${S} Finger1`), H(`${S} Finger4`))); a = norm(sub(a, mul(d, dot(a, d))));
+    let n = cross(d, a); if (dot(n, [-Math.sign(h[0]), -0.5, 0]) < 0) n = mul(n, -1);
+    const Ah = A[N(`${S} Hand`)];
+    let p0 = qrot(Ah, n); p0 = norm([p0[0], 0, p0[2]]); const r0 = norm(cross([0, -1, 0], p0));
+    hand[S] = { p0, r0: dot(r0, qrot(Ah, a)) > 0 ? r0 : mul(r0, -1) };
+  }
+  return { bones, by, A, segOf, anchor, L, H, N, hand, body, rom: romFrom(body.rom_deg), pronK: body.pronation_on_forearm ?? 0.55,
+    ankleH: (H("R Foot")[1] + H("L Foot")[1]) / 2, pelvis0: H("Pelvis") };
+}
+// bone lengths (rest): every parent->child offset, for the constant-length check
+export function restLengths(ch) { const o = {}; for (const b of ch.bones) if (b.parent) o[b.name] = len(sub(b.head, ch.by[b.parent].head)); return o; }
+
+// ------------------------------------------------------------------ grip socket + finger wrap
+// Implement model frame (implements/<id>.json): handle axis -Y (butt -> head), face normal +Z.
+// Grip (grips/<id>.json): bevel rotation of the face about the handle from the eastern-forehand position, handle tilt
+// from the thumb-side axis toward the fingers, and where the handle axis crosses the closed fist.
+const rkOf = (impl) => ({ fist: impl.fist, center: impl.sweet_spot, handleR: impl.handle.radius, head: impl.head, butt: impl.butt, length: impl.length, id: impl.id });
+export function gripSocket(ch, side, grip, impl, oppositeFace = false) {
+  const S = side.toUpperCase(), hd = ch.hand[S], rk = rkOf(impl), tilt = grip.handle_tilt_deg ?? 16;
+  const dirL = norm(add(mul(hd.r0, Math.cos(tilt / DEG)), mul([0, -1, 0], Math.sin(tilt / DEG))));
+  let face = sub(hd.p0, mul(dirL, dot(hd.p0, dirL))); face = norm(face);
+  face = qrot(qaxis(dirL, (grip.bevel_deg ?? 0) * (S === "R" ? 1 : -1)), face);
+  if (oppositeFace) face = mul(face, -1);              // second hand wraps the handle from the other side
+  const G = basis(dirL, face);                                         // implement model -> hand-local
+  const fo = grip.fist_offset_m || { palm: 0.031, along_fingers: 0.060 };
+  const fistL = add(mul(hd.p0, fo.palm), [0, -fo.along_fingers, 0]);   // handle axis passes through the closed fist
+  const g = sub(fistL, qrot(G, [0, -rk.fist, 0]));                    // model origin in hand-local
+  return { G, g, fistL, dirL, grip: grip.id, curls: grip.fingers === "wrap" ? fingerWrap(ch, S, G, g, rk) : relaxedCurls(ch, S) };
+}
+// solve finger flexions so every phalanx rests on the handle surface (no gap, nothing inside the handle)
+function fingerWrap(ch, S, G, g, rk) {
+  const Ah = ch.A[ch.N(`${S} Hand`)], Ainv = qinv(Ah), h = ch.H(`${S} Hand`);
+  const toRest = (vL) => add(h, qrot(Ainv, vL));                     // hand-local point -> rest-world point
+  const axisP = toRest(add(g, qrot(G, [0, -0.06, 0]))), axisD = norm(qrot(Ainv, qrot(G, [0, -1, 0])));
+  const R = rk.handleR + 0.0085;                                      // handle radius + finger half thickness
+  const distAxis = (p) => { const v = sub(p, axisP); return len(sub(v, mul(axisD, dot(v, axisD)))); };
+  const palmW = qrot(Ainv, ch.hand[S].p0), radW = qrot(Ainv, ch.hand[S].r0);
+  const curls = {};
+  const chainFK = (names, rots, tipLen) => {      // rots: rest-world rotations per joint (applied cumulatively)
+    let q = QI; const pts = []; let p = ch.H(`${S} ${names[0]}`);
+    for (let i = 0; i < names.length; i++) {
+      q = qmul(q, rots[i]); const next = i + 1 < names.length ? ch.H(`${S} ${names[i + 1]}`) : add(ch.H(`${S} ${names[i]}`), mul(norm(sub(ch.H(`${S} ${names[i]}`), ch.H(`${S} ${names[i - 1]}`))), tipLen));
+      const off = sub(next, ch.H(`${S} ${names[i]}`)); const np = add(p, qrot(q, off)); pts.push(mul(add(p, np), 0.5), np); p = np;
+    }
+    return pts;
+  };
+  const err = (pts) => pts.reduce((s, p) => { const d = distAxis(p) - R; return s + (d < 0 ? 4 * d * d : d * d); }, 0);
+  for (const f of ["1", "2", "3", "4"]) {
+    const names = [`Finger${f}`, `Finger${f}1`, `Finger${f}2`];
+    const dir = norm(sub(ch.H(`${S} ${names[1]}`), ch.H(`${S} ${names[0]}`)));
+    let ax = norm(cross(dir, palmW)); if (dot(cross(ax, dir), palmW) < 0) ax = mul(ax, -1);   // rotating about ax curls toward the palm
+    const tip = len(sub(ch.H(`${S} ${names[2]}`), ch.H(`${S} ${names[1]}`))) * 0.85;
+    let best = [1e9];
+    for (let a = 0; a <= 95; a += 5) for (let b = 0; b <= 110; b += 5) for (let c = 0; c <= 80; c += 10) {
+      const rots = [qaxis(ax, a), qaxis(ax, b), qaxis(ax, c)];
+      const e = err(chainFK(names, rots, tip)) + 1e-7 * (a * a + b * b + c * c);
+      if (e < best[0]) best = [e, a, b, c];
+    }
+    let [, a, b, c] = best;                                            // refine
+    for (const st of [2, 1, 0.5]) for (let it = 0; it < 3; it++) for (const [da, db, dc] of [[st, 0, 0], [-st, 0, 0], [0, st, 0], [0, -st, 0], [0, 0, st], [0, 0, -st]]) {
+      const e = err(chainFK(names, [qaxis(ax, a + da), qaxis(ax, b + db), qaxis(ax, c + dc)], tip));
+      if (e < best[0]) { best = [e, a + da, b + db, c + dc]; [, a, b, c] = best; }
+    }
+    [a, b, c].forEach((ang, j) => { curls[ch.N(`${S} ${names[j]}`)] = qaxis(ax, ang); });
+  }
+  // thumb: opposes across the front of the handle (2 DOF at the base, flexion of the two distal joints)
+  const tn = ["Finger0", "Finger01", "Finger02"];
+  const tdir = norm(sub(ch.H(`${S} Finger01`), ch.H(`${S} Finger0`)));
+  const tax = norm(cross(tdir, palmW)); const ttip = len(sub(ch.H(`${S} Finger02`), ch.H(`${S} Finger01`))) * 0.8;
+  let bt = [1e9];
+  for (let o = -30; o <= 60; o += 6) for (let fl = -10; fl <= 50; fl += 6) for (let b = 0; b <= 70; b += 10) for (let c = 0; c <= 70; c += 10) {
+    const r0 = qmul(qaxis(axisD, o * (S === "R" ? 1 : -1)), qaxis(tax, fl));
+    const e = err(chainFK(tn, [r0, qaxis(tax, b), qaxis(tax, c)], ttip)) + 1e-7 * (o * o + fl * fl + b * b + c * c);
+    if (e < bt[0]) bt = [e, o, fl, b, c];
+  }
+  const [, o, fl, tb, tc] = bt;
+  curls[ch.N(`${S} Finger0`)] = qmul(qaxis(axisD, o * (S === "R" ? 1 : -1)), qaxis(tax, fl)); curls[ch.N(`${S} Finger01`)] = qaxis(tax, tb); curls[ch.N(`${S} Finger02`)] = qaxis(tax, tc);
+  return curls;
+}
+// relaxed free hand (light curl)
+function relaxedCurls(ch, S) {
+  const out = {}, Ainv = qinv(ch.A[ch.N(`${S} Hand`)]), palmW = qrot(Ainv, ch.hand[S].p0);
+  for (const f of "1234") {
+    const names = [`Finger${f}`, `Finger${f}1`, `Finger${f}2`]; const dir = norm(sub(ch.H(`${S} ${names[1]}`), ch.H(`${S} ${names[0]}`)));
+    let ax = norm(cross(dir, palmW)); if (dot(cross(ax, dir), palmW) < 0) ax = mul(ax, -1);
+    (ch.body.relaxed_hand_curl_deg || [20, 28, 15]).forEach((d, j) => { out[ch.N(`${S} ${names[j]}`)] = qaxis(ax, d); });
+  }
+  return out;
 }
 
-// bones whose position follows another bone's frame instead of their parent (Bip01 hangs the clavicles off the
-// neck and the thighs off the spine; the retarget treats them as chest- and pelvis-anchored, as in v2-v4)
-export const ANCHOR = { [B + "R Clavicle"]: B + "Spine2", [B + "L Clavicle"]: B + "Spine2", [B + "R Thigh"]: B + "Pelvis", [B + "L Thigh"]: B + "Pelvis" };
-function fk(ch, D, pel) {
+// ------------------------------------------------------------------ FK
+export function fk(ch, D, pel, curls) {
   const delta = {}, pos = {};
   for (const b of ch.bones) {
     const seg = ch.segOf[b.name];
     if (seg) delta[b.name] = D[seg] ? (ch.A[b.name] ? qmul(D[seg], ch.A[b.name]) : D[seg]) : QI;
-    else if (b.parent) delta[b.name] = ch.curl[b.name] ? qmul(delta[b.parent], ch.curl[b.name]) : delta[b.parent];
+    else if (b.parent) delta[b.name] = curls[b.name] ? qmul(delta[b.parent], curls[b.name]) : delta[b.parent];
     else delta[b.name] = QI;
-    const par = ANCHOR[b.name] || b.parent;
-    if (!b.parent) pos[b.name] = pel;
-    else pos[b.name] = add(pos[par], qrot(delta[par], sub(b.head, ch.by[par].head)));
+    const par = ch.anchor[b.name] || b.parent;
+    pos[b.name] = b.parent ? add(pos[par], qrot(delta[par], sub(b.head, ch.by[par].head))) : pel;
   }
   return { delta, pos };
 }
-// smooth limb-length limit: identity below 92 % of full reach, then eases (C-infinity) toward 99.9 %
-function softReach(d, L, dmin) {
-  const a = 0.92 * L, b = 0.999 * L;
-  if (d > a) d = a + (b - a) * Math.tanh((d - a) / (b - a));
-  if (d < dmin + 0.05) d = dmin + 0.05 * Math.exp((d - dmin - 0.05) / 0.05);
-  return d;
-}
-// ------------------------------------------------------------------ pose solve
-// p (one phase, after interpolation):
-//  pelvis [x,y,z] world; yaw, lean, chest_yaw, chest_roll, head_pitch (deg)
-//  r_arm / l_arm: either {hand:[x,y,z], pole:[x,y,z], dir:[..], face:[..]} in the chest frame relative to the shoulder,
-//                 or {dirs:[upper, fore, hand]} segment directions in the chest frame (gen.py style).
-//  r_leg / l_leg: {foot:[x,z], yaw, lift} planted ankle target (world) solved by IK, or {dirs:[thigh, shin]} (world).
-export function solvePose(ch, p, rc = RACKET_CENTER) {
+export function trunkD(p) {
   const D = {};
-  const chestQ = (yawSum) => qaxis([0, 1, 0], yawSum);
   D.pelvis = qmul(qaxis([0, 1, 0], p.yaw), qaxis([1, 0, 0], p.lean * 0.4));
   D.spine = qmul(D.pelvis, qaxis([1, 0, 0], p.lean * 0.6));
   D.chest = qmul(D.spine, qmul(qaxis([0, 1, 0], p.chest_yaw), qaxis([0, 0, 1], p.chest_roll || 0)));
   D.neck = qmul(D.chest, qmul(qaxis([0, 1, 0], p.head_yaw || 0), qaxis([1, 0, 0], p.head_pitch - p.lean)));
-  const armFrame = chestQ(p.yaw + p.chest_yaw);        // arm targets are given in this frame (as gen.py)
-  const fwd = qrot(armFrame, [0, 0, 1]);
-  // --- pelvis height: lower automatically so that planted feet never over-stretch the legs
-  let pel = p.pelvis.slice();
-  const hipOf = (pelPos, s) => add(pelPos, qrot(D.pelvis, sub(ch.H(`${s} Thigh`), ch.pelvis0)));
-  const ankleTarget = (leg) => [leg.foot[0], ch.ankleH + (leg.lift || 0), leg.foot[1]];
-  const softplus = (x, k) => (x > 20 * k ? x : k * Math.log1p(Math.exp(x / k)));
-  for (let it = 0; it < 5; it++) {                // smooth (C-infinity) lowering, no kink when it engages
-    let need = 0;
-    for (const s of ["R", "L"]) {
-      const leg = p[s === "R" ? "r_leg" : "l_leg"]; if (!leg.foot) continue;
-      const k = s.toLowerCase(), reach = (ch.L[`${k}_thigh`] + ch.L[`${k}_shin`]) * 0.985;
-      const d = len(sub(ankleTarget(leg), hipOf(pel, s)));
-      need = Math.max(need, softplus(d - reach, 0.006));
-    }
-    if (need < 1e-6) break;
-    pel = [pel[0], pel[1] - need * 0.9, pel[2]];
-  }
-  // --- arms (shoulder positions from the trunk FK)
-  const info = { reach: {} };
-  const trunk = fk(ch, D, pel, null);
-  for (const side of ["r", "l"]) {
-    const S = side.toUpperCase(), arm = p[`${side}_arm`];
-    const sh = trunk.pos[B + `${S} UpperArm`];
-    let up, lo, handDir, faceHint, bendHint = fwd;
-    if (arm.dirs) {
-      up = qrot(armFrame, norm(arm.dirs[0])); lo = qrot(armFrame, norm(arm.dirs[1])); handDir = qrot(armFrame, norm(arm.dirs[2]));
-      faceHint = side === "r" ? norm(add(mul(norm(cross(handDir, [1, 0, 0])), 0.3), fwd)) : fwd;
-      if (arm.face) faceHint = qrot(armFrame, norm(arm.face));
-    } else {
-      const L1 = ch.L[`${side}_upper`], L2 = ch.L[`${side}_fore`];
-      const F = arm.frame === "world" ? QI : armFrame;          // world: absolute targets; chest: relative to the shoulder
-      let W = arm.frame === "world" ? arm.hand.slice() : add(sh, qrot(armFrame, arm.hand));
-      let dv = sub(W, sh), d = len(dv); const u = norm(dv);
-      info.reach[side] = d / (L1 + L2);
-      d = softReach(d, L1 + L2, Math.abs(L1 - L2) + 0.03);
-      const pole = qrot(F, norm(arm.pole));
-      let pp = sub(pole, mul(u, dot(pole, u))); if (len(pp) < 1e-5) pp = cross(u, [0, 1, 0]); pp = norm(pp);
-      const a = (L1 * L1 + d * d - L2 * L2) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
-      const E = add(sh, add(mul(u, a), mul(pp, h))); W = add(sh, mul(u, d)); bendHint = pp;
-      up = norm(sub(E, sh)); lo = norm(sub(W, E));
-      handDir = arm.head ? norm(sub(arm.head, W)) : arm.dir ? qrot(F, norm(arm.dir)) : lo;
-      faceHint = arm.face ? qrot(F, norm(arm.face)) : pole;
-    }
-    // twist: IK arms orient the upper arm toward the authored elbow pole (smooth, defined even when the arm is
-    // straight); direction-mode arms use gen.py's chest-forward hint so the reference bandeja matches v1-v4
-    const upHint = arm.dirs ? fwd : bendHint;
-    D[`${side}_upper`] = basis(up, upHint);
-    D[`${side}_fore`] = basis(lo, arm.dirs ? fwd : add(faceHint, mul(qrot(D[`${side}_upper`], [0, 0, 1]), 0.5)));
-    D[`${side}_hand`] = basis(handDir, faceHint);
-  }
-  // --- legs
-  for (const side of ["r", "l"]) {
-    const S = side.toUpperCase(), leg = p[`${side}_leg`];
-    const hip = hipOf(pel, S);
-    const facing = qrot(qaxis([0, 1, 0], (leg.yaw ?? p.yaw * 0.6)), [0, 0, 1]);
-    let th, sh;
-    if (leg.dirs) { th = norm(leg.dirs[0]); sh = norm(leg.dirs[1]); }
-    else {
-      const L1 = ch.L[`${side}_thigh`], L2 = ch.L[`${side}_shin`], T = ankleTarget(leg);
-      const u = norm(sub(T, hip)); let d = softReach(len(sub(T, hip)), L1 + L2, Math.abs(L1 - L2) + 0.05);
-      const kneeDir = norm(add(facing, [side === "r" ? -0.12 : 0.12, 0, 0]));
-      let pp = sub(kneeDir, mul(u, dot(kneeDir, u))); pp = norm(pp);
-      const a = (L1 * L1 + d * d - L2 * L2) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
-      const K = add(hip, add(mul(u, a), mul(pp, h)));
-      th = norm(sub(K, hip)); sh = norm(sub(add(hip, mul(u, d)), K));
-    }
-    D[`${side}_thigh`] = basis(th, facing); D[`${side}_shin`] = basis(sh, facing);
-    const lift = leg.lift || 0, pitch = Math.asin(Math.min(0.6, lift / 0.16)) * 180 / Math.PI;
-    D[`${side}_foot`] = qmul(qaxis([0, 1, 0], leg.yaw ?? p.yaw * 0.6), qaxis([1, 0, 0], pitch));
-  }
-  let { delta, pos } = fk(ch, D, pel, null);
-  if (p.r_leg.dirs || p.l_leg.dirs) {     // direction-mode legs (reference port): drop so the lower foot touches the floor
-    let low = Infinity;
-    for (const s of ["R", "L"]) low = Math.min(low, pos[B + `${s} Toe0`][1] - ch.H(`${s} Toe0`)[1], pos[B + `${s} Foot`][1] - ch.H(`${s} Foot`)[1]);
-    pel = [pel[0], pel[1] - low, pel[2]]; ({ delta, pos } = fk(ch, D, pel, null));
-  }
-  const wrist = pos[B + "R Hand"], Dh = D.r_hand;
-  const racket = { wrist, dir: qrot(Dh, [0, -1, 0]), normal: qrot(Dh, [0, 0, 1]), center: add(wrist, qrot(Dh, [0, -rc, 0])) };
-  return { delta, pos, racket, pelvis: pel, info, D };
+  return D;
 }
 
-// Pose from an interpolated state: segment rotations D (already interpolated), pelvis, planted-foot params and the
-// two-hand weight. Legs are re-solved by IK to the planted feet with the knee pole taken from the interpolated thigh
-// rotation (always defined, so no flips); the free hand is pulled onto the handle for two-handed strokes.
+// ------------------------------------------------------------------ arm: joint angles <-> segment rotations
+function wristSwing(hd, flex, dev) {
+  const u = norm(add([0, -1, 0], add(mul(hd.p0, Math.tan(flex / DEG)), mul(hd.r0, Math.tan(dev / DEG)))));
+  return rotBetween([0, -1, 0], u);
+}
+// humerus direction (azimuth from lateral toward forward, elevation from hanging) + humeral rotation -> shoulder quat
+export function shoulderQuat(side, az, el, rot) {
+  const S = side.toUpperCase(), sx = S === "R" ? -1 : 1;
+  const hor = [sx * Math.cos(az / DEG), 0, Math.sin(az / DEG)];
+  const h = [Math.sin(el / DEG) * hor[0], -Math.cos(el / DEG), Math.sin(el / DEG) * hor[2]];
+  const lat = [sx, 0, 0];
+  const ref = qmul(rotBetween(lat, h), qaxis([0, 0, 1], S === "R" ? -90 : 90));
+  return qmul(ref, qaxis([0, 1, 0], S === "R" ? -rot : rot));
+}
+export function armFromAngles(ch, side, Dchest, J) {
+  const S = side.toUpperCase(), hd = ch.hand[S], sg = S === "R" ? 1 : -1;
+  const Du = qmul(Dchest, J.shoulder || shoulderQuat(side, J.az, J.el, J.rot));
+  const El = qmul(Du, qaxis([1, 0, 0], -J.elbow));
+  const tw = J.pron * sg;                        // pronation = twist about +Y on the right, -Y on the left
+  return { upper: Du, fore: qmul(El, qaxis([0, 1, 0], tw * ch.pronK)), hand: qmul(qmul(El, qaxis([0, 1, 0], tw)), wristSwing(hd, J.wflex, J.wdev)) };
+}
+function anglesFromSegments(ch, side, Dchest, Du, elbow, Dhand) {
+  const S = side.toUpperCase(), hd = ch.hand[S], sg = S === "R" ? 1 : -1;
+  const F0 = qmul(Du, qaxis([1, 0, 0], -elbow));
+  const rel = qmul(qinv(F0), Dhand);
+  const { twist } = swingTwist(rel, [0, 1, 0]);
+  const uh = qrot(rel, [0, -1, 0]); const ul = qrot(qaxis([0, 1, 0], -twist), uh);
+  const wflex = Math.atan2(dot(ul, hd.p0), -ul[1]) * DEG, wdev = Math.atan2(dot(ul, hd.r0), -ul[1]) * DEG;
+  return { shoulder: qmul(qinv(Dchest), Du), elbow, pron: wrapDeg(twist * sg), wflex, wdev };
+}
+// humeral rotation (lateral reference, singular only when the arm points straight across the chest) + direction limits
+export function shoulderMeasures(side, Rs) {
+  const S = side.toUpperCase(), lat = S === "R" ? [-1, 0, 0] : [1, 0, 0];
+  const h = qrot(Rs, [0, -1, 0]);
+  const ref = qmul(rotBetween(lat, h), qaxis([0, 0, 1], S === "R" ? -90 : 90));
+  const { twist } = swingTwist(qmul(qinv(ref), Rs), [0, 1, 0]);
+  const ext = wrapDeg(twist * (S === "R" ? -1 : 1));
+  const hz = Math.hypot(h[0], h[2]); let back = 0, cross = 0;
+  if (hz > 0.3) {
+    const az = Math.atan2(h[2], -h[0] * (S === "R" ? 1 : -1)) * DEG;   // 0 = lateral, 90 = straight ahead, 180 = across
+    back = Math.max(0, -az); cross = Math.max(0, az - 90);
+  }
+  return { rot: ext, back, cross, elev: Math.acos(Math.max(-1, Math.min(1, -h[1]))) * DEG };
+}
+const excess = (v, [lo, hi]) => (v < lo ? lo - v : v > hi ? v - hi : 0);
+// key solve: hand pose target -> joint angles within ROM (elbow swivel search, then clamp)
+function solveArm(ch, side, Dchest, shoulderPos, wristT, handT, poleW, pref = {}, swPrev = null) {
+  const S = side.toUpperCase(), L1 = ch.L[`${side}_upper`], L2 = ch.L[`${side}_fore`];
+  const v = sub(wristT, shoulderPos), u = norm(v);
+  let d = len(v), reach = d / (L1 + L2);
+  const a0 = 0.92 * (L1 + L2), b0 = 0.995 * (L1 + L2); if (d > a0) d = a0 + (b0 - a0) * Math.tanh((d - a0) / (b0 - a0));
+  d = Math.max(d, Math.abs(L1 - L2) + 0.08);
+  const elbow = Math.PI - Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2))));
+  const aa = (L1 * L1 + d * d - L2 * L2) / (2 * d), hh = Math.sqrt(Math.max(0, L1 * L1 - aa * aa));
+  let pp0 = sub(poleW, mul(u, dot(poleW, u))); if (len(pp0) < 1e-6) pp0 = cross(u, [0, 1, 0]); pp0 = norm(pp0);
+  const W = add(shoulderPos, mul(u, d));
+  const hard = (J) => ({ ...J, pron: Math.max(ch.rom.pron[0], Math.min(ch.rom.pron[1], J.pron)), wflex: Math.max(ch.rom.wflex[0], Math.min(ch.rom.wflex[1], J.wflex)),
+                         wdev: Math.max(ch.rom.wdev[0], Math.min(ch.rom.wdev[1], J.wdev)) });
+  const evalSw = (phi) => {
+    const pp = qrot(qaxis(u, phi), pp0); const E = add(shoulderPos, add(mul(u, aa), mul(pp, hh)));
+    const up = norm(sub(E, shoulderPos)), lo = norm(sub(W, E));
+    let bend = sub(lo, mul(up, dot(lo, up))); bend = len(bend) < 1e-6 ? pp : norm(bend);
+    const Du = basis(up, bend);
+    // racket hand: joints that reproduce the target hand orientation; free hand: neutral wrist, preferred pronation
+    let J = handT ? anglesFromSegments(ch, side, Dchest, Du, elbow * DEG, handT)
+                  : { shoulder: qmul(qinv(Dchest), Du), elbow: elbow * DEG, pron: pref.pron ?? 0, wflex: pref.wflex ?? 0, wdev: pref.wdev ?? 0 };
+    const sm = shoulderMeasures(side, J.shoulder);
+    const shEx = excess(sm.rot, ch.rom.shoulderRot) + Math.max(0, sm.back - ch.rom.shoulderBack) + Math.max(0, sm.cross - ch.rom.shoulderCross);
+    let oriErr = 0, Jc = J;
+    if (handT) {               // forearm/wrist limits are hard: clamp, then measure how far the hand (racket) is from the target
+      Jc = hard(J); const Dh = armFromAngles(ch, side, Dchest, Jc).hand;
+      const d = Math.abs(qmul(qinv(Dh), handT)[3]); oriErr = 2 * Math.acos(Math.min(1, d)) * DEG;
+    }
+    const near = (v, [lo, hi]) => Math.max(0, v - (hi - 0.15 * (hi - lo))) + Math.max(0, (lo + 0.15 * (hi - lo)) - v);  // keep off the limits
+    const pf = pref.wflex ?? 0, pd = pref.wdev ?? 0, pr = pref.pron ?? 0;
+    const cost = 2000 * shEx * shEx + 3 * oriErr * oriErr + 0.6 * (Jc.wflex - pf) ** 2 + 0.6 * (Jc.wdev - pd) ** 2 + 0.15 * (Jc.pron - pr) ** 2
+      + 0.25 * phi * phi + 2 * (near(Jc.pron, ch.rom.pron) ** 2 + near(Jc.wflex, ch.rom.wflex) ** 2 + near(Jc.wdev, ch.rom.wdev) ** 2 + near(sm.rot, ch.rom.shoulderRot) ** 2);
+    return { cost, J: Jc, sm, phi, ex: shEx, oriErr };
+  };
+  let best = null;
+  if (swPrev === null) for (let phi = -150; phi <= 150; phi += 5) { const r = evalSw(phi); if (!best || r.cost < best.cost) best = r; }
+  else for (let phi = swPrev - 12; phi <= swPrev + 12; phi += 1) { const r = evalSw(phi); r.cost += 0.5 * (phi - swPrev) ** 2; if (!best || r.cost < best.cost) best = r; }
+  for (const st of [2.5, 1, 0.4, 0.1]) for (const dp of [-st, st]) { const r = evalSw(best.phi + dp); if (swPrev !== null) r.cost += 0.5 * (r.phi - swPrev) ** 2; if (r.cost < best.cost) best = r; }
+  const J = { ...best.J }; J.elbow = Math.max(ch.rom.elbow[0], Math.min(ch.rom.elbow[1], J.elbow));
+  return { J, reach, violation: best.ex, swivel: best.phi, oriErr: best.oriErr };
+}
+
+// ------------------------------------------------------------------ pose from joint state
+// st: { trunk:{pelvis,yaw,lean,chest_yaw,chest_roll,head_pitch,head_yaw}, arms:{r:J,l:J}, feet:{r,l}, kneeR, kneeL, twoHand }
+export function lowerPelvis(ch, D, pel0, feet) {     // smooth drop so planted feet never over-stretch the legs
+  let pel = pel0.slice();
+  const hipOf = (pelPos, s) => add(pelPos, qrot(D.pelvis, sub(ch.H(`${s} Thigh`), ch.pelvis0)));
+  const ankleT = (f) => [f.foot[0], ch.ankleH + (f.lift || 0), f.foot[1]];
+  const softplus = (x, k) => (x > 20 * k ? x : k * Math.log1p(Math.exp(x / k)));
+  for (let it = 0; it < 5; it++) {
+    let need = 0;
+    for (const s of ["r", "l"]) need = Math.max(need, softplus(len(sub(ankleT(feet[s]), hipOf(pel, s.toUpperCase()))) - (ch.L[`${s}_thigh`] + ch.L[`${s}_shin`]) * 0.985, 0.006));
+    if (need < 1e-6) break; pel = [pel[0], pel[1] - need * 0.9, pel[2]];
+  }
+  return pel;
+}
+export function poseFromState(ch, st, grip) {
+  const D = trunkD(st.trunk); const pel = lowerPelvis(ch, D, st.trunk.pelvis, st.feet);
+  const hipOf = (pelPos, s) => add(pelPos, qrot(D.pelvis, sub(ch.H(`${s} Thigh`), ch.pelvis0)));
+  const ankleT = (f) => [f.foot[0], ch.ankleH + (f.lift || 0), f.foot[1]];
+  const info = { legs: {} };
+  for (const s of ["r", "l"]) {
+    const f = st.feet[s], facing = qrot(qaxis([0, 1, 0], f.yaw), [0, 0, 1]);
+    const kneeDir = norm(add(facing, [s === "r" ? -0.1 : 0.1, 0, 0]));
+    const hip = hipOf(pel, s.toUpperCase()), T = ankleT(f), L1 = ch.L[`${s}_thigh`], L2 = ch.L[`${s}_shin`];
+    const u = norm(sub(T, hip)); let d = len(sub(T, hip)); const a0 = 0.92 * (L1 + L2), b0 = 0.999 * (L1 + L2);
+    if (d > a0) d = a0 + (b0 - a0) * Math.tanh((d - a0) / (b0 - a0));
+    let pp = sub(kneeDir, mul(u, dot(kneeDir, u))); pp = norm(pp);
+    const aa = (L1 * L1 + d * d - L2 * L2) / (2 * d), hh = Math.sqrt(Math.max(0, L1 * L1 - aa * aa));
+    const K = add(hip, add(mul(u, aa), mul(pp, hh)));
+    const th = norm(sub(K, hip)), sh = norm(sub(add(hip, mul(u, d)), K));
+    D[`${s}_thigh`] = basis(th, pp); D[`${s}_shin`] = basis(sh, pp);
+    const pitch = Math.asin(Math.min(0.6, (f.lift || 0) / 0.16)) * DEG;
+    D[`${s}_foot`] = qmul(qaxis([0, 1, 0], f.yaw), qaxis([1, 0, 0], pitch));
+    info.legs[s] = { knee: Math.acos(Math.max(-1, Math.min(1, dot(th, sh)))) * DEG, kneeDir: pp, facing, pitch, th };
+  }
+  for (const s of ["r", "l"]) { const A = armFromAngles(ch, s, D.chest, st.arms[s]); D[`${s}_upper`] = A.upper; D[`${s}_fore`] = A.fore; D[`${s}_hand`] = A.hand; }
+  const curls = { ...grip.curlsR, ...grip.curlsL };
+  let { delta, pos } = fk(ch, D, pel, curls);
+  const rk = grip.rk, gs = grip.R;
+  const racketAt = (Dh, wrist) => { const R = qmul(Dh, gs.G), origin = add(wrist, qrot(Dh, gs.g));
+    return { R, origin, wrist, dir: qrot(R, [0, -1, 0]), normal: qrot(R, [0, 0, 1]), center: add(origin, qrot(R, [0, -rk.center, 0])), implement: rk.id }; };
+  let racket = racketAt(D.r_hand, pos[ch.N("R Hand")]);
+  // two-handed: left hand IK onto the handle above the right hand, through its own grip socket
+  if (st.twoHand > 1e-3 && grip.L) {
+    const w = Math.min(1, st.twoHand);
+    const fistTarget = add(racket.origin, qrot(racket.R, [0, -(rk.fist + grip.secondAlong), 0]));
+    const handT = qmul(racket.R, qinv(grip.L.G));
+    const wristT = sub(fistTarget, qrot(handT, grip.L.fistL));
+    const J0 = st.arms.l;
+    const r = st.leftBaked ? J0 : (w < 1e-3 ? J0 : optimizeArm(ch, "l", D.chest, pos[ch.N("L UpperArm")], { wrist: wristT, handQ: handT, pref: { wflex: J0.wflex, wdev: J0.wdev, pron: J0.pron }, contW: 6 / w },
+      J0, null, {}, J0, [1, 0.5, 0.25, 0.12], armBounds(ch, true)).J);
+    const A = armFromAngles(ch, "l", D.chest, r); D.l_upper = A.upper; D.l_fore = A.fore; D.l_hand = A.hand; st.arms.l = r;
+    ({ delta, pos } = fk(ch, D, pel, curls));
+    racket = racketAt(D.r_hand, pos[ch.N("R Hand")]);
+    const fistNow = add(pos[ch.N("L Hand")], qrot(D.l_hand, grip.L.fistL));
+    const aa = Math.max(rk.fist + grip.slide[0], Math.min(rk.fist + grip.slide[1], dot(sub(fistNow, racket.origin), racket.dir)));
+    info.leftGrip = { fistTarget: add(racket.origin, mul(racket.dir, aa)), fist: fistNow, roll: Math.acos(Math.max(-1, Math.min(1, dot(qrot(D.l_hand, qrot(grip.L.G, [0, 0, 1])), racket.normal)))) * DEG };
+  }
+  return { delta, pos, racket, pelvis: pel, D, info, arms: st.arms };
+}
+// per-frame left-hand IK (no swivel search: pole from the current upper-arm frame keeps it continuous)
+export function solveArmFast(ch, side, Dchest, S, W0, handT, poleW) {
+  const L1 = ch.L[`${side}_upper`], L2 = ch.L[`${side}_fore`]; const u = norm(sub(W0, S)); let d = len(sub(W0, S));
+  const a0 = 0.92 * (L1 + L2), b0 = 0.995 * (L1 + L2); if (d > a0) d = a0 + (b0 - a0) * Math.tanh((d - a0) / (b0 - a0)); d = Math.max(d, Math.abs(L1 - L2) + 0.08);
+  const elbow = Math.PI - Math.acos(Math.max(-1, Math.min(1, (L1 * L1 + L2 * L2 - d * d) / (2 * L1 * L2))));
+  const aa = (L1 * L1 + d * d - L2 * L2) / (2 * d), hh = Math.sqrt(Math.max(0, L1 * L1 - aa * aa));
+  let pp = sub(poleW, mul(u, dot(poleW, u))); pp = len(pp) < 1e-6 ? cross(u, [0, 1, 0]) : norm(pp);
+  const E = add(S, add(mul(u, aa), mul(pp, hh))), up = norm(sub(E, S)), lo = norm(sub(add(S, mul(u, d)), E));
+  let bend = sub(lo, mul(up, dot(lo, up))); bend = len(bend) < 1e-6 ? mul(pp, -1) : norm(bend);   // forearm side = elbow flexion side
+  const J = anglesFromSegments(ch, side, Dchest, basis(up, bend), elbow * DEG, handT);
+  J.pron = soft(J.pron, ...ch.rom.pron); J.wflex = soft(J.wflex, ...ch.rom.wflex); J.wdev = soft(J.wdev, ...ch.rom.wdev); J.elbow = soft(J.elbow, ...ch.rom.elbow, 2);
+  return J;
+}
 function slerp(a, b, t) {
-  let d = a[0] * b[0] + a[1] * b[1] + a[2] * b[2] + a[3] * b[3]; if (d < 0) { b = b.map((v) => -v); d = -d; }
-  if (d > 0.9995) { const r = a.map((v, i) => v + t * (b[i] - v)); const l = Math.hypot(...r); return r.map((v) => v / l); }
+  let d = dot([a[0], a[1], a[2]], [b[0], b[1], b[2]]) + a[3] * b[3]; if (d < 0) { b = b.map((v) => -v); d = -d; }
+  if (d > 0.9995) return qnorm(a.map((v, i) => v + t * (b[i] - v)));
   const th = Math.acos(d), s0 = Math.sin((1 - t) * th) / Math.sin(th), s1 = Math.sin(t * th) / Math.sin(th);
   return a.map((v, i) => s0 * v + s1 * b[i]);
 }
-function twoBone(root, target, L1, L2, pole, dmin) {
-  const u = norm(sub(target, root)); const d = softReach(len(sub(target, root)), L1 + L2, dmin);
-  let pp = sub(pole, mul(u, dot(pole, u))); if (len(pp) < 1e-6) pp = cross(u, [0, 1, 0]); pp = norm(pp);
-  const a = (L1 * L1 + d * d - L2 * L2) / (2 * d), h = Math.sqrt(Math.max(0, L1 * L1 - a * a));
-  const K = add(root, add(mul(u, a), mul(pp, h)));
-  return { d1: norm(sub(K, root)), d2: norm(sub(add(root, mul(u, d)), K)), pp };
+
+// ------------------------------------------------------------------ bounded arm optimiser (key solve)
+// 7 anatomical DOF, each box-bounded by the body profile: humerus azimuth/elevation, humeral rotation, elbow,
+// pronation, wrist flexion, wrist deviation. Objective: racket sweet spot at the target (1 cm = 1), face normal
+// (either face, 8 deg = 1), handle direction (25 deg = 1), wrist/pronation cues, authored elbow pole.
+export function armBounds(ch, full = false) {
+  const r = ch.rom;
+  if (full) return { az: [-r.shoulderBack, 90 + r.shoulderCross], el: [0, 178], rot: r.shoulderRot, elbow: r.elbow, pron: r.pron, wflex: r.wflex, wdev: r.wdev };
+  const m = (a, k = 6) => [a[0] + k, a[1] - k];      // keys stay 6 deg inside each limit (frames may use the margin smoothly)
+  return { az: [-r.shoulderBack + 6, 90 + r.shoulderCross - 6], el: [0, 165], rot: m(r.shoulderRot), elbow: [r.elbow[0] + 2, r.elbow[1] - 6], pron: m(r.pron), wflex: m(r.wflex), wdev: m(r.wdev, 4) };
 }
-export function poseFromState(ch, st, rc = RACKET_CENTER) {
-  const D = { ...st.D }; let pel = st.pelvis.slice();
-  const hipOf = (pelPos, s) => add(pelPos, qrot(D.pelvis, sub(ch.H(`${s} Thigh`), ch.pelvis0)));
-  if (st.feet) {
-    const ankleT = (f) => [f.foot[0], ch.ankleH + (f.lift || 0), f.foot[1]];
-    const softplus = (x, k) => (x > 20 * k ? x : k * Math.log1p(Math.exp(x / k)));
-    for (let it = 0; it < 5; it++) {
-      let need = 0;
-      for (const s of ["r", "l"]) need = Math.max(need, softplus(len(sub(ankleT(st.feet[s]), hipOf(pel, s.toUpperCase()))) - (ch.L[`${s}_thigh`] + ch.L[`${s}_shin`]) * 0.985, 0.006));
-      if (need < 1e-6) break; pel = [pel[0], pel[1] - need * 0.9, pel[2]];
+export const PK = ["az", "el", "rot", "elbow", "pron", "wflex", "wdev"];
+function angOf(a, b) { return Math.acos(Math.max(-1, Math.min(1, dot(norm(a), norm(b))))) * DEG; }
+export function optimizeArm(ch, side, Dchest, shoulderPos, target, init, grip, extra = {}, prevJ = null, steps = [16, 8, 4, 2, 1, 0.5, 0.25], bounds = null) {
+  const bd = bounds || armBounds(ch), rk = grip ? grip.rk : null, gs = grip ? (side === "r" ? grip.R : grip.L) : null;
+  const L1 = ch.L[`${side}_upper`], L2 = ch.L[`${side}_fore`];
+  const pf = target.pref || {};
+  const clampJ = (J) => { const o = { ...J }; for (const k of PK) o[k] = Math.max(bd[k][0], Math.min(bd[k][1], o[k])); return o; };
+  const evalJ = (J) => {
+    const A = armFromAngles(ch, side, Dchest, J);
+    const elbowPos = add(shoulderPos, qrot(A.upper, [0, -L1, 0]));
+    const wrist = add(elbowPos, qrot(qmul(A.upper, qaxis([1, 0, 0], -J.elbow)), [0, -L2, 0]));
+    let c = 0;
+    if (target.center || target.racketOnly) {
+      const R = qmul(A.hand, gs.G), origin = add(wrist, qrot(A.hand, gs.g)), center = add(origin, qrot(R, [0, -rk.center, 0]));
+      const n = qrot(R, [0, 0, 1]), d = qrot(R, [0, -1, 0]);
+      const ps = target.posScale ?? 0.01, fs = target.faceScale ?? 8, ds = target.dirScale ?? 25;
+      if (target.center) c += (len(sub(center, target.center)) / ps) ** 2;
+      if (target.face) { const fa = Math.min(angOf(n, target.face), angOf(mul(n, -1), target.face)); c += (target.faceW ?? 1) * (fa / fs) ** 2; }
+      if (target.dir) c += (target.dirW ?? 1) * (angOf(d, target.dir) / ds) ** 2;
+      if (extra.body) {                     // keep the racket head out of the head / torso volumes
+        for (let i = 0; i < 12; i++) { const a = 2 * Math.PI * i / 12;
+          const wp = add(origin, qrot(R, [rk.head.half_width * Math.cos(a), -rk.center + rk.head.half_height * Math.sin(a), 0]));
+          for (const [a0, b0, rad] of extra.body) { const ab = sub(b0, a0); const tt = Math.max(0, Math.min(1, dot(sub(wp, a0), ab) / (dot(ab, ab) || 1)));
+            const def = rad + 0.03 - len(sub(wp, add(a0, mul(ab, tt)))); if (def > 0) c += 5 * (def / 0.01) ** 2; } }
+      }
+      if (extra.leftReach) {                // two-handed: score the second hand's best legal grip on this racket pose
+        const lr = extra.leftReach, fist2 = add(origin, qrot(R, [0, -(rk.fist + lr.along), 0]));
+        const ex2 = len(sub(fist2, lr.shoulder)) - 0.9 * lr.L; if (ex2 > 0) c += (ex2 / 0.01) ** 2;
+        const handL = qmul(R, qinv(lr.gsL.G)), wristL = sub(fist2, qrot(handL, lr.gsL.fistL));
+        const JL = solveArmFast(ch, "l", Dchest, lr.shoulder, wristL, handL, lr.pole);
+        const AL = armFromAngles(ch, "l", Dchest, JL);
+        const elL = add(lr.shoulder, qrot(AL.upper, [0, -ch.L.l_upper, 0]));
+        const wrL = add(elL, qrot(qmul(AL.upper, qaxis([1, 0, 0], -JL.elbow)), [0, -ch.L.l_fore, 0]));
+        const gap = len(sub(add(wrL, qrot(AL.hand, lr.gsL.fistL)), fist2));
+        const smL = shoulderMeasures("l", JL.shoulder);
+        c += (lr.w ?? 0) * ((gap / 0.012) ** 2 + 10 * (excess(smL.rot, ch.rom.shoulderRot) / 5) ** 2);
+      }
+    } else if (target.wrist) c += (len(sub(wrist, target.wrist)) / 0.01) ** 2;
+    if (target.handle) {                  // second hand: fist on the handle axis inside a slide band, hand axis along the handle, limited roll
+      const hdl = target.handle, gsL = hdl.gs;
+      const fist = add(wrist, qrot(A.hand, gsL.fistL)), v = sub(fist, hdl.p);
+      const a = Math.max(hdl.band[0], Math.min(hdl.band[1], dot(v, hdl.d)));
+      c += (len(sub(fist, add(hdl.p, mul(hdl.d, a)))) / 0.002) ** 2;
+      const axL = qrot(A.hand, qrot(gsL.G, [0, -1, 0])), nL = qrot(A.hand, qrot(gsL.G, [0, 0, 1]));
+      c += (angOf(axL, hdl.d) / 2) ** 2;
+      const roll = angOf(nL, hdl.n); c += (Math.max(0, roll - hdl.roll) / 3) ** 2;
     }
-    for (const s of ["r", "l"]) {
-      const f = st.feet[s], pole = qrot(D[`${s}_thigh`], [0, 0, 1]);
-      const r = twoBone(hipOf(pel, s.toUpperCase()), ankleT(f), ch.L[`${s}_thigh`], ch.L[`${s}_shin`], pole, Math.abs(ch.L[`${s}_thigh`] - ch.L[`${s}_shin`]) + 0.05);
-      D[`${s}_thigh`] = basis(r.d1, r.pp); D[`${s}_shin`] = basis(r.d2, r.pp);
-      const pitch = Math.asin(Math.min(0.6, (f.lift || 0) / 0.16)) * 180 / Math.PI;
-      D[`${s}_foot`] = qmul(qaxis([0, 1, 0], f.yaw), qaxis([1, 0, 0], pitch));
+    if (target.handQ) { const dq = Math.abs(qmul(qinv(A.hand), target.handQ)[3]); c += ((2 * Math.acos(Math.min(1, dq)) * DEG) / 6) ** 2; }
+    c += ((J.wflex - (pf.wflex ?? 0)) / 20) ** 2 + ((J.wdev - (pf.wdev ?? 0)) / 20) ** 2 + ((J.pron - (pf.pron ?? 0)) / 40) ** 2;
+    if (target.pole) { const mid = add(shoulderPos, mul(sub(wrist, shoulderPos), 0.5)); c += 0.5 * (angOf(sub(elbowPos, mid), target.pole) / 45) ** 2; }
+    if (prevJ) for (const k of PK) c += (target.contW ?? 0.15) * ((J[k] - prevJ[k]) / 40) ** 2;   // continuity with the previous key
+    if (target.near) for (const k of PK) c += ((J[k] - target.near[k]) / 8) ** 2;              // stay near the interpolated joints
+    if (target.accel) for (const k of PK) c += ((J[k] - target.accel[k]) / (target.accelScale ?? 3)) ** 2;             // smooth: stay near the constant-velocity prediction
+    if (target.prior) c += target.prior * (((J.rot - 20) / 50) ** 2 + (Math.max(0, 30 - J.elbow) / 25) ** 2 + (Math.max(0, J.elbow - 120) / 25) ** 2);
+    for (const k of ["rot", "pron", "wflex", "wdev"]) { const [lo, hi] = bd[k], m = 0.12 * (hi - lo); c += 0.02 * (Math.max(0, J[k] - (hi - m)) ** 2 + Math.max(0, lo + m - J[k]) ** 2); }
+    return { c, wrist };
+  };
+  const local = (J0) => {
+    let J = clampJ(J0), best = evalJ(J).c;
+    for (const step of steps) {
+      for (let pass = 0; pass < 40; pass++) {
+        let improved = false;
+        for (const k of PK) for (const sgn of [1, -1]) {
+          const T = clampJ({ ...J, [k]: J[k] + sgn * step }); const v = evalJ(T).c;
+          if (v < best - 1e-9) { best = v; J = T; improved = true; }
+        }
+        if (!improved) break;
+      }
     }
+    return { J, best };
+  };
+  let starts = [init];
+  if (extra.multiStart) {                 // global: deterministic quasi-random samples over the joint box, keep the best few
+    let seed = 12345; const rnd = () => ((seed = (seed * 1103515245 + 12345) & 0x7fffffff) / 0x7fffffff);
+    const smp = [];
+    for (let i = 0; i < extra.multiStart; i++) { const J = {}; for (const k of PK) J[k] = bd[k][0] + rnd() * (bd[k][1] - bd[k][0]); smp.push([evalJ(J).c, J]); }
+    smp.sort((a, b) => a[0] - b[0]); starts = starts.concat(smp.slice(0, 4).map((x) => x[1]));
   }
-  if (st.twoHand > 1e-3) {
-    const tmp = fk(ch, D, pel); const w = Math.min(1, st.twoHand);
-    const handle = add(tmp.pos[B + "R Hand"], mul(qrot(D.r_hand, [0, -1, 0]), 0.085));
-    const tgt = add(tmp.pos[B + "L Hand"], mul(sub(handle, tmp.pos[B + "L Hand"]), w));
-    const r = twoBone(tmp.pos[B + "L UpperArm"], tgt, ch.L.l_upper, ch.L.l_fore, qrot(D.l_upper, [0, 0, 1]), Math.abs(ch.L.l_upper - ch.L.l_fore) + 0.03);
-    D.l_upper = basis(r.d1, r.pp); D.l_fore = basis(r.d2, r.pp); D.l_hand = slerp(D.l_hand, D.r_hand, w);
+  let bestR = null; for (const st of starts) { const r = local(st); if (!bestR || r.best < bestR.best) bestR = r; }
+  return { J: bestR.J, cost: bestR.best, wrist: evalJ(bestR.J).wrist };
+}
+function anglesToParams(ch, side, J) {             // analytic-IK seed -> optimiser parameters
+  const sm = shoulderMeasures(side, J.shoulder); const h = qrot(J.shoulder, [0, -1, 0]); const sx = side === "r" ? -1 : 1;
+  return { az: Math.atan2(h[2], h[0] * sx) * DEG, el: Math.acos(Math.max(-1, Math.min(1, -h[1]))) * DEG, rot: sm.rot, elbow: J.elbow, pron: J.pron, wflex: J.wflex, wdev: J.wdev };
+}
+// ------------------------------------------------------------------ key solve (phase targets -> joint state)
+
+// phase pose (v6): trunk fields as v5; racket:{center,dir,face} (world); r_pole; r_wrist:{flex,dev} preference;
+// l_arm:{hand,dir,face,pole} for the free hand; r_leg/l_leg feet; two_hand (0/1)
+export function solveKey(ch, p, grip, opts = {}, prev = null) {
+  const D = trunkD(p);
+  const feet = { r: { foot: p.r_leg.foot, lift: p.r_leg.lift || 0 }, l: { foot: p.l_leg.foot, lift: p.l_leg.lift || 0 } };
+  const trunk = fk(ch, D, lowerPelvis(ch, D, p.pelvis, feet), {});
+  const rk = grip.rk, gs = grip.R;
+  const shR = trunk.pos[ch.N("R UpperArm")], shL = trunk.pos[ch.N("L UpperArm")];
+  // seed: analytic IK + swivel search on the exact racket pose; then the bounded optimiser
+  const Rt = basis(p.racket.dir, p.racket.face), handT = qmul(Rt, qinv(gs.G));
+  const wristT = sub(sub(p.racket.center, qrot(Rt, [0, -rk.center, 0])), qrot(handT, gs.g));
+  const seed = solveArm(ch, "r", D.chest, shR, wristT, handT, norm(p.r_pole), { ...(p.r_wrist || {}) });
+  const twoH = (p.two_hand || 0) > 0.5 && grip.L;
+  const C = opts.isContact;
+  const tgtR = { center: p.racket.center, face: p.racket.face, dir: p.racket.dir, pole: norm(p.r_pole), pref: p.r_wrist || {},
+                 posScale: C ? (twoH ? 0.04 : 0.01) : 0.06, faceScale: C ? 8 : 30, dirScale: C ? 25 : 45, faceW: C ? 3 : 1, dirW: twoH ? 0.08 : (C ? 0.6 : 0.5),
+                 contW: C ? 0.15 : Math.min(8, opts.contK ?? 1), prior: C ? 0 : 1 };
+  const P = trunk.pos, cap = ch.body.body_capsules_m, hd = add(P[ch.N("Head")], [0, 0.09, 0]);
+  const body = [[P[ch.N("Pelvis")], P[ch.N("Spine2")], cap.torso_lower], [P[ch.N("Spine2")], P[ch.N("Neck")], cap.torso_upper], [hd, hd, cap.head]];
+  const rOpt = optimizeArm(ch, "r", D.chest, shR, tgtR, anglesToParams(ch, "r", seed.J), grip,
+    { body, multiStart: twoH ? 4000 : 1500, ...(twoH ? { leftReach: { shoulder: shL, along: grip.secondAlong, L: ch.L.l_upper + ch.L.l_fore, gsL: grip.L, pole: norm(p.l_arm.pole), w: 60 } } : {}) }, prev ? prev.arms.r : null);
+  // left: free hand to its wrist target, or (two-handed) onto the handle through its own grip socket
+  let lOpt;
+  if (twoH) {
+    const A = armFromAngles(ch, "r", D.chest, rOpt.J); const R = qmul(A.hand, gs.G), origin = add(rOpt.wrist, qrot(A.hand, gs.g));
+    const fistT = add(origin, qrot(R, [0, -(rk.fist + grip.secondAlong), 0])); const handL = qmul(R, qinv(grip.L.G));
+    const wristL = sub(fistT, qrot(handL, grip.L.fistL));
+    const s2 = solveArm(ch, "l", D.chest, shL, wristL, handL, norm(p.l_arm.pole), {});
+    lOpt = optimizeArm(ch, "l", D.chest, shL, { wrist: wristL, handQ: handL, pole: norm(p.l_arm.pole), pref: {} }, anglesToParams(ch, "l", s2.J), null, {}, prev ? prev.arms.l : null);
+  } else {
+    const la = p.l_arm; const pref = { wflex: la.wflex ?? -10, wdev: 0, pron: la.pron ?? 0 };
+    const s2 = solveArm(ch, "l", D.chest, shL, la.hand, null, norm(la.pole), pref);
+    lOpt = optimizeArm(ch, "l", D.chest, shL, { wrist: la.hand, pole: norm(la.pole), pref, contW: 1.0, prior: 1 }, anglesToParams(ch, "l", s2.J), null, {}, prev ? prev.arms.l : null);
   }
-  const { delta, pos } = fk(ch, D, pel);
-  const wrist = pos[B + "R Hand"], Dh = D.r_hand;
-  const racket = { wrist, dir: qrot(Dh, [0, -1, 0]), normal: qrot(Dh, [0, 0, 1]), center: add(wrist, qrot(Dh, [0, -rc, 0])) };
-  return { delta, pos, racket, pelvis: pel, info: { reach: {} }, D };
+  return { trunk: { pelvis: p.pelvis, yaw: p.yaw, lean: p.lean, chest_yaw: p.chest_yaw, chest_roll: p.chest_roll || 0, head_pitch: p.head_pitch, head_yaw: p.head_yaw || 0 },
+           arms: { r: rOpt.J, l: lOpt.J }, diag: { r: { cost: rOpt.cost, seed }, l: { cost: lOpt.cost } } };
 }
-// ------------------------------------------------------------------ interpolation
-// Flatten a phase pose to numbers (fixed key order), keep a template to rebuild. Feet use monotone cubic (planted
-// feet stay exactly still), everything else a clamped C2 cubic spline (zero velocity at the loop ends).
-function flatten(obj, path = "", out = []) {
-  if (Array.isArray(obj)) {
-    if (obj.length && Array.isArray(obj[0])) obj.forEach((v, i) => flatten(v, `${path}[${i}]`, out));
-    else obj.forEach((v, i) => out.push([`${path}[${i}]`, v]));
-  } else if (obj && typeof obj === "object") for (const k of Object.keys(obj).sort()) flatten(obj[k], path ? `${path}.${k}` : k, out);
-  else out.push([path, obj]);
-  return out;
-}
-function setPath(o, path, v) {
-  const parts = path.match(/[^.[\]]+/g); let cur = o;
-  for (let i = 0; i < parts.length - 1; i++) {
-    const k = parts[i], nk = parts[i + 1];
-    if (cur[k] === undefined) cur[k] = /^\d+$/.test(nk) ? [] : {};
-    cur = cur[k];
-  }
-  cur[parts[parts.length - 1]] = v;
-}
-function clampedSpline(t, y) {          // returns f(x): C2 cubic through (t_i, y_i), f'(t0) = f'(tn) = 0
+
+// ------------------------------------------------------------------ splines
+function clampedSpline(t, y) {
   const n = t.length - 1, h = []; for (let i = 0; i < n; i++) h.push(t[i + 1] - t[i]);
-  // clamp: m_0 = m_n = 0
-  const m = new Array(n + 1).fill(0);
-  const A2 = [], B2 = [], C2 = [], R2 = [];
+  const m = new Array(n + 1).fill(0), A2 = [], B2 = [], C2 = [], R2 = [];
   for (let i = 1; i < n; i++) { A2.push(i > 1 ? h[i] : 0); B2.push(2 * (h[i - 1] + h[i])); C2.push(i < n - 1 ? h[i - 1] : 0);
     R2.push(3 * (h[i - 1] * (y[i + 1] - y[i]) / h[i] + h[i] * (y[i] - y[i - 1]) / h[i - 1])); }
   const N = n - 1;
-  if (N > 0) {      // Thomas algorithm
-    const cp = new Array(N), rp = new Array(N);
-    cp[0] = C2[0] / B2[0]; rp[0] = R2[0] / B2[0];
+  if (N > 0) { const cp = new Array(N), rp = new Array(N); cp[0] = C2[0] / B2[0]; rp[0] = R2[0] / B2[0];
     for (let i = 1; i < N; i++) { const den = B2[i] - A2[i] * cp[i - 1]; cp[i] = C2[i] / den; rp[i] = (R2[i] - A2[i] * rp[i - 1]) / den; }
-    m[N] = rp[N - 1]; for (let i = N - 2; i >= 0; i--) m[i + 1] = rp[i] - cp[i] * m[i + 2];
-  }
+    m[N] = rp[N - 1]; for (let i = N - 2; i >= 0; i--) m[i + 1] = rp[i] - cp[i] * m[i + 2]; }
   return hermite(t, y, m);
 }
-function pchip(t, y) {                  // monotone cubic (Fritsch-Carlson), zero end slopes
+function pchip(t, y) {
   const n = t.length - 1, d = [], m = new Array(n + 1).fill(0);
   for (let i = 0; i < n; i++) d.push((y[i + 1] - y[i]) / (t[i + 1] - t[i]));
-  for (let i = 1; i < n; i++) {
-    if (d[i - 1] * d[i] <= 0) m[i] = 0;
-    else { const w1 = 2 * (t[i + 1] - t[i]) + (t[i] - t[i - 1]), w2 = (t[i + 1] - t[i]) + 2 * (t[i] - t[i - 1]); m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]); }
-  }
+  for (let i = 1; i < n; i++) { if (d[i - 1] * d[i] <= 0) m[i] = 0; else { const w1 = 2 * (t[i + 1] - t[i]) + (t[i] - t[i - 1]), w2 = (t[i + 1] - t[i]) + 2 * (t[i] - t[i - 1]); m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]); } }
   return hermite(t, y, m);
 }
 function hermite(t, y, m) {
   const n = t.length - 1;
-  return (x) => {
-    if (x <= t[0]) return y[0]; if (x >= t[n]) return y[n];
-    let i = 0; while (i < n - 1 && x > t[i + 1]) i++;
+  return (x) => { if (x <= t[0]) return y[0]; if (x >= t[n]) return y[n]; let i = 0; while (i < n - 1 && x > t[i + 1]) i++;
     const h = t[i + 1] - t[i], s = (x - t[i]) / h, s2 = s * s, s3 = s2 * s;
-    return (2 * s3 - 3 * s2 + 1) * y[i] + (s3 - 2 * s2 + s) * h * m[i] + (-2 * s3 + 3 * s2) * y[i + 1] + (s3 - s2) * h * m[i + 1];
-  };
+    return (2 * s3 - 3 * s2 + 1) * y[i] + (s3 - 2 * s2 + s) * h * m[i] + (-2 * s3 + 3 * s2) * y[i + 1] + (s3 - s2) * h * m[i + 1]; };
 }
+const smooth = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * x * (x * (6 * x - 15) + 10); };
 
 // ------------------------------------------------------------------ technique compile
-const smooth = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * x * (x * (6 * x - 15) + 10); };   // C2 smootherstep
-export function compileTechnique(ch, tech, sport, opts = {}) {
-  const ph = tech.phases; const T = ph.map((p) => p.t);
-  const contactOffset = opts.contactHeight || 0;
-  const iC = ph.findIndex((p) => p.name === (tech.contact?.phase || "contact"));
-  const tc = T[iC];
-  const rc = sport.implement?.grip_offset ?? RACKET_CENTER;
-  // 1) solve every phase key (IK on clean authored targets)
-  const keyPose = ph.map((P, i) => {
-    const q = JSON.parse(JSON.stringify(P.pose));
-    if (contactOffset && i === iC) { if (q.r_arm.hand) { q.r_arm.hand[1] += contactOffset; if (q.r_arm.head) q.r_arm.head[1] += contactOffset; } q.pelvis[1] += contactOffset * 0.25; }
-    return q;
-  });
-  const keySol = keyPose.map((q) => solvePose(ch, q, rc));
-  // 2) C2 spline per quaternion component (sign-aligned key to key, then normalised) for every segment rotation
-  const segs = Object.keys(keySol[0].D), qf = {};
-  for (const sg of segs) {
-    const qs = []; for (const k of keySol) { let q = k.D[sg]; const pr = qs[qs.length - 1]; if (pr && pr[0] * q[0] + pr[1] * q[1] + pr[2] * q[2] + pr[3] * q[3] < 0) q = q.map((v) => -v); qs.push(q); }
-    qf[sg] = [0, 1, 2, 3].map((c) => clampedSpline(T, qs.map((q) => q[c])));
-  }
-  const pf = [0, 1, 2].map((c) => clampedSpline(T, keySol.map((k) => k.pelvis[c])));
-  // 3) planted feet: monotone cubic on the authored foot params (exactly still while a foot stays put)
-  const ikLegs = !keyPose[0].r_leg.dirs;
-  const ff = {};
-  if (ikLegs) for (const s of ["r", "l"]) {
-    const g = (fn) => pchip(T, keyPose.map((q) => fn(q[`${s}_leg`])));
-    ff[s] = { x: g((l) => l.foot[0]), z: g((l) => l.foot[1]), yaw: g((l) => l.yaw ?? 0), lift: g((l) => l.lift || 0) };
-  }
-  const th = pchip(T, keyPose.map((q) => q.two_hand || 0));
-  const at = (t) => {
-    const D = {}; for (const sg of segs) { const q = qf[sg].map((f) => f(t)); const l = Math.hypot(...q); D[sg] = q.map((v) => v / l); }
-    const st = { D, pelvis: pf.map((f) => f(t)), twoHand: th(t) };
-    if (ikLegs) st.feet = Object.fromEntries(["r", "l"].map((s) => [s, { foot: [ff[s].x(t), ff[s].z(t)], yaw: ff[s].yaw(t), lift: ff[s].lift(t) }]));
-    return st;
+// layer = { implements: {id: json}, grips: {id: json} }; a technique names its implement (or the sport's default) and grip
+export function makeGrip(ch, tech, sport, layer) {
+  const impl = layer.implements[tech.implement || sport.implement]; if (!impl) throw new Error(`${tech.id}: unknown implement`);
+  const gdef = layer.grips[tech.grip || "continental"]; if (!gdef) throw new Error(`${tech.id}: unknown grip ${tech.grip}`);
+  const R = gripSocket(ch, "r", gdef, impl);
+  const sh = gdef.second_hand; const L = sh ? gripSocket(ch, "l", layer.grips[sh.grip], impl, !!sh.opposite_face) : null;
+  return { impl, rk: rkOf(impl), R, L, secondAlong: sh ? sh.along_handle_m : 0, slide: sh ? (sh.slide_m || [sh.along_handle_m, sh.along_handle_m]) : null, rollFree: sh ? (sh.roll_free_deg ?? 0) : 0,
+    curlsR: R.curls, curlsL: L ? L.curls : relaxedCurls(ch, "L") };
+}
+export function compileTechnique(ch, tech, sport, layer, opts = {}) {
+  const ph = tech.phases, T = ph.map((p) => p.t);
+  const grip = makeGrip(ch, tech, sport, layer), rk = grip.rk;
+  const iC = ph.findIndex((p) => p.name === (tech.contact?.phase || "contact")); const tc = T[iC];
+  const keyPose = ph.map((P, i) => { const q = JSON.parse(JSON.stringify(P.pose));
+    if (opts.contactHeight && i === iC) { q.racket.center[1] += opts.contactHeight; q.pelvis[1] += opts.contactHeight * 0.25; }
+    return q; });
+  const keys = new Array(keyPose.length);
+  keys[iC] = solveKey(ch, keyPose[iC], grip, { isContact: true }, null);
+  for (let i = iC + 1; i < keyPose.length; i++) keys[i] = solveKey(ch, keyPose[i], grip, { contK: (0.3 / (T[i] - T[i - 1])) ** 2 }, keys[i - 1]);
+  for (let i = iC - 1; i >= 0; i--) keys[i] = solveKey(ch, keyPose[i], grip, { contK: (0.3 / (T[i + 1] - T[i])) ** 2 }, keys[i + 1]);
+  // the loop closes on the first key: the last key (same pose) reuses it exactly
+  if (JSON.stringify(keyPose[0]) === JSON.stringify(keyPose[keyPose.length - 1])) keys[keys.length - 1] = keys[0];
+  // joint-space splines (rebuilt when automatic via-keys are added)
+  const bd = armBounds(ch, true);
+  let Tk = T.slice(), K = keys.slice(), FT = keyPose.map((q) => ({ r: q.r_leg, l: q.l_leg, th: q.two_hand || 0 }));
+  const build = () => {
+    const tf = {}; for (const k of ["yaw", "lean", "chest_yaw", "chest_roll", "head_pitch", "head_yaw"]) tf[k] = clampedSpline(Tk, K.map((Q) => Q.trunk[k]));
+    const pf = [0, 1, 2].map((c) => clampedSpline(Tk, K.map((Q) => Q.trunk.pelvis[c])));
+    const af = {}; for (const s of ["r", "l"]) { af[s] = {}; for (const k of PK) af[s][k] = clampedSpline(Tk, K.map((Q) => Q.arms[s][k])); }
+    const ff = {}; for (const s of ["r", "l"]) { const g = (fn) => pchip(Tk, FT.map((q) => fn(q[s])));
+      ff[s] = { x: g((l) => l.foot[0]), z: g((l) => l.foot[1]), yaw: g((l) => l.yaw ?? 0), lift: g((l) => l.lift || 0) }; }
+    const th = pchip(Tk, FT.map((q) => q.th));
+    return (t) => {
+      const trunk = { pelvis: pf.map((f) => f(t)) }; for (const k in tf) trunk[k] = tf[k](t);
+      const arms = {}; for (const s of ["r", "l"]) { const J = {}; for (const k of PK) J[k] = soft(af[s][k](t), bd[k][0], bd[k][1], 6); arms[s] = J; }
+      const feet = Object.fromEntries(["r", "l"].map((s) => [s, { foot: [ff[s].x(t), ff[s].z(t)], yaw: ff[s].yaw(t), lift: ff[s].lift(t) }]));
+      return { trunk, arms, feet, twoHand: th(t) };
+    };
   };
-  const solve = (t) => poseFromState(ch, at(t), rc);
-  // --- time warp (output time -> real time) with an eased slow-motion window
+  let at = build();
+  // automatic via-keys: where the interpolated racket passes through the torso / head / thighs, insert a key at
+  // that instant solved to stay near the interpolated arm while clearing the body; repeat (max 4)
+  const bodyCaps = (P) => { const cap = ch.body.body_capsules_m, hd = add(P[ch.N("Head")], [0, 0.09, 0]);
+    return [[P[ch.N("Pelvis")], P[ch.N("Spine2")], cap.torso_lower], [P[ch.N("Spine2")], P[ch.N("Neck")], cap.torso_upper], [hd, hd, cap.head],
+      [P[ch.N("R Thigh")], P[ch.N("R Calf")], cap.thigh], [P[ch.N("L Thigh")], P[ch.N("L Calf")], cap.thigh]]; };
+  const clearance = (r) => { let m = 9;
+    for (let i = 0; i < 12; i++) { const a = 2 * Math.PI * i / 12; const wp = add(r.racket.origin, qrot(r.racket.R, [rk.head.half_width * Math.cos(a), -rk.center + rk.head.half_height * Math.sin(a), 0]));
+      for (const [a0, b0, rad] of bodyCaps(r.pos)) { const ab = sub(b0, a0); const tt = Math.max(0, Math.min(1, dot(sub(wp, a0), ab) / (dot(ab, ab) || 1)));
+        m = Math.min(m, len(sub(wp, add(a0, mul(ab, tt)))) - rad - rk.head.thickness / 2); } }
+    return m; };
+  for (let it = 0; it < 4; it++) {
+    let worst = [0.02, -1];
+    for (let t = Tk[0]; t <= Tk[Tk.length - 1]; t += 1 / 60) { const c = clearance(poseFromState(ch, at(t), grip)); if (c < worst[0]) worst = [c, t]; }
+    if (worst[1] < 0) break;
+    const tv = worst[1]; if (Tk.some((x) => Math.abs(x - tv) < 0.03)) break;
+    const st = at(tv); const D = trunkD(st.trunk); const pel = lowerPelvis(ch, D, st.trunk.pelvis, st.feet); const trk = fk(ch, D, pel, {});
+    const o = optimizeArm(ch, "r", D.chest, trk.pos[ch.N("R UpperArm")], { racketOnly: true, near: st.arms.r, pref: {} }, st.arms.r, grip,
+      { body: bodyCaps(trk.pos).map(([a, b, r]) => [a, b, r + 0.02]) }, null, [8, 4, 2, 1, 0.5], armBounds(ch));
+    const i = Tk.findIndex((x) => x > tv);
+    Tk.splice(i, 0, tv); K.splice(i, 0, { trunk: { ...st.trunk }, arms: { r: o.J, l: st.arms.l }, diag: { via: true } });
+    FT.splice(i, 0, { r: st.feet.r, l: st.feet.l, th: st.twoHand });
+    at = build();
+  }
+  let solve = (t) => poseFromState(ch, at(t), grip);
+  if (grip.L) {   // two-handed = closed chain, solved as dense coupled keys (every 1/30 s): the dominant arm follows the
+                  // interpolated racket path while the second hand must stay legally on the handle (sliding grip band); joint
+                  // acceleration across consecutive dense keys is penalised for both arms; both are splined through the keys.
+    const keyRk = Tk.map((t) => poseFromState(ch, { ...at(t), twoHand: 0 }, grip).racket);
+    const cf = [0, 1, 2].map((c) => clampedSpline(Tk, keyRk.map((r) => r.center[c])));
+    const nfA = []; for (const r of keyRk) { let n = r.normal; const pr = nfA[nfA.length - 1]; if (pr && dot(pr, n) < 0) n = mul(n, -1); nfA.push(n); }
+    const nf = [0, 1, 2].map((c) => clampedSpline(Tk, nfA.map((n) => n[c])));
+    const step = 1 / 30, ts = [], jr = [], jl = [];
+    for (let t = Tk[0]; t <= Tk[Tk.length - 1] + 1e-9; t += step) {
+      const st = at(t); const D = trunkD(st.trunk); const pel = lowerPelvis(ch, D, st.trunk.pelvis, st.feet); const trk = fk(ch, D, pel, {});
+      const shR = trk.pos[ch.N("R UpperArm")], shL = trk.pos[ch.N("L UpperArm")];
+      const prev = jr[jr.length - 1] || st.arms.r, prev2 = jr[jr.length - 2] || prev;
+      const pred = {}; for (const k of PK) pred[k] = 2 * prev[k] - prev2[k];
+      let poleL = [1, -0.5, -0.3];                        // the second hand's current elbow direction (consistent estimate)
+      if (jl.length) { const AL = armFromAngles(ch, "l", D.chest, jl[jl.length - 1]); const e = add(shL, qrot(AL.upper, [0, -ch.L.l_upper, 0]));
+        const w = add(e, qrot(qmul(AL.upper, qaxis([1, 0, 0], -jl[jl.length - 1].elbow)), [0, -ch.L.l_fore, 0])); poleL = norm(sub(e, add(shL, mul(sub(w, shL), 0.5)))); }
+      const tgt = { center: cf.map((f) => f(t)), face: norm(nf.map((f) => f(t))), posScale: 0.03, faceScale: 15, faceW: 1, pref: {}, accel: pred };
+      const o = optimizeArm(ch, "r", D.chest, shR, tgt, jr.length ? prev : st.arms.r, grip,
+        { body: bodyCaps(trk.pos), leftReach: { shoulder: shL, along: grip.secondAlong, L: ch.L.l_upper + ch.L.l_fore, gsL: grip.L, pole: poleL, w: 60 } }, null,
+        jr.length ? [4, 2, 1, 0.5, 0.25, 0.12] : [16, 8, 4, 2, 1, 0.5, 0.25], armBounds(ch, true));
+      const A = armFromAngles(ch, "r", D.chest, o.J); const R = qmul(A.hand, grip.R.G), origin = add(o.wrist, qrot(A.hand, grip.R.g));
+      const fistL = add(origin, qrot(R, [0, -(rk.fist + grip.secondAlong), 0])), handL = qmul(R, qinv(grip.L.G)), wristL = sub(fistL, qrot(handL, grip.L.fistL));
+      let lj;
+      if (!jl.length) { const b = solveArm(ch, "l", D.chest, shL, wristL, handL, [1, -0.6, -0.3], {}); lj = anglesToParams(ch, "l", b.J); }
+      else { const lp = jl[jl.length - 1], lp2 = jl[jl.length - 2] || lp; const lpred = {}; for (const k of PK) lpred[k] = 2 * lp[k] - lp2[k];
+        const hdl = { p: origin, d: qrot(R, [0, -1, 0]), n: qrot(R, [0, 0, 1]), band: grip.slide.map((x) => rk.fist + x), roll: grip.rollFree, gs: grip.L };
+        lj = optimizeArm(ch, "l", D.chest, shL, { handle: hdl, pref: {}, accel: lpred, accelScale: 10 }, lp, null, {}, null, [8, 4, 2, 1, 0.5, 0.25, 0.12, 0.06], armBounds(ch, true)).J; }
+      ts.push(t); jr.push(o.J); jl.push(lj);
+    }
+    const n = ts.length, m = Math.max(2, Math.round(0.25 / step));
+    const closeLoop = (arr) => arr.map((v, i) => { const u = (i - (n - 1 - m)) / m; if (u <= 0) return v; const ww = u * u * u * (u * (6 * u - 15) + 10); return v + (arr[0] - v) * ww; });
+    const unwrap = (arr) => { const o = [arr[0]]; for (let i = 1; i < arr.length; i++) { let v = arr[i]; while (v - o[i - 1] > 180) v -= 360; while (v - o[i - 1] < -180) v += 360; o.push(v); } return o; };
+    const rf = {}, lf = {}; for (const k of PK) { rf[k] = clampedSpline(ts, closeLoop(unwrap(jr.map((J) => J[k])))); lf[k] = clampedSpline(ts, closeLoop(unwrap(jl.map((J) => J[k])))); }
+    const at0 = at, bf = armBounds(ch, true);
+    solve = (t) => { const st = at0(t); const Jr = {}, Jl = {}; for (const k of PK) { Jr[k] = soft(rf[k](t), bf[k][0], bf[k][1], 6); Jl[k] = soft(lf[k](t), bf[k][0], bf[k][1], 6); } st.arms.r = Jr; st.arms.l = Jl; st.leftBaked = true; return poseFromState(ch, st, grip); };
+  }
+  // time warp
   const sm = tech.slowmo || { from: ph[1].name, to: ph[ph.length - 2].name, rate: 1 };
   const rate = opts.slowRate ?? sm.rate, ramp = Math.max(0.45, sm.ramp ?? 0.45);
   const tA = T[ph.findIndex((p) => p.name === sm.from)], tB = T[ph.findIndex((p) => p.name === sm.to)];
   const speed = (t) => 1 - (1 - rate) * smooth((t - (tA - ramp)) / ramp) * (1 - smooth((t - tB) / ramp));
-  // --- ball: anchored at the solved racket face at contact; incoming integrated backward, outgoing forward
+  // ball anchored at the solved face at contact
   const R = sport.ball?.radius ?? 0.0335, g = -9.81, e = sport.ball?.restitution ?? 0.75;
   const cp = solve(tc).racket; const vin = tech.ball.in.vel, vout = tech.ball.out.vel;
   let n = cp.normal; if (dot(n, mul(vin, -1)) < 0) n = mul(n, -1);
   const C = add(cp.center, mul(n, R + 0.021));
-  const integrate = (p0, v0, dur, dir) => {   // dir = -1 backward in time
-    const pts = [[0, p0]]; let p = p0.slice(), v = v0.slice(); const dt = 1 / 480;
+  const integrate = (p0, v0, dur, dir) => { const pts = [[0, p0]]; let p = p0.slice(), v = v0.slice(); const dt = 1 / 480;
     for (let s = dt; s <= dur + 1e-9; s += dt) {
       if (dir > 0) { v = [v[0], v[1] + g * dt, v[2]]; p = add(p, mul(v, dt)); if (p[1] < R && v[1] < 0) { p[1] = 2 * R - p[1]; v = [v[0] * 0.85, -v[1] * e, v[2] * 0.85]; } }
       else { p = sub(p, mul(v, dt)); v = [v[0], v[1] - g * dt, v[2]]; if (p[1] < R && v[1] > 0) { p[1] = 2 * R - p[1]; v = [v[0] / 0.85, -v[1] / e, v[2] / 0.85]; } }
-      pts.push([dir * s, p.slice()]);
-    }
-    return pts;
-  };
-  const ballIn = integrate(C, vin, tech.ball.in.dur ?? 1.0, -1).reverse();
-  const ballOut = integrate(C, vout, tech.ball.out.dur ?? 0.8, 1);
+      pts.push([dir * s, p.slice()]); }
+    return pts; };
+  const ballIn = integrate(C, vin, tech.ball.in.dur ?? 1.0, -1).reverse(), ballOut = integrate(C, vout, tech.ball.out.dur ?? 0.8, 1);
   const tIn0 = tc + ballIn[0][0], tOut1 = tc + ballOut[ballOut.length - 1][0];
-  const ballAt = (t) => {
-    if (t < tIn0 || t > tOut1) return null;
-    const arr = t <= tc ? ballIn : ballOut, rel = t - tc;
-    const i = Math.min(arr.length - 2, Math.max(0, Math.floor((rel - arr[0][0]) * 480)));
-    const [t0, p0] = arr[i], [t1, p1] = arr[i + 1]; const s = (rel - t0) / ((t1 - t0) || 1);
-    return add(p0, mul(sub(p1, p0), Math.min(1, Math.max(0, s))));
-  };
-  // --- racket-head trail (sampled once)
-  const tr0 = T[Math.max(0, ph.findIndex((p) => p.name === (tech.trail?.from || ph[1].name)))];
-  const tr1 = T[ph.findIndex((p) => p.name === (tech.trail?.to || ph[ph.length - 2].name))];
+  const ballAt = (t) => { if (t < tIn0 || t > tOut1) return null; const arr = t <= tc ? ballIn : ballOut, rel = t - tc;
+    const i = Math.min(arr.length - 2, Math.max(0, Math.floor((rel - arr[0][0]) * 480))); const [t0, p0] = arr[i], [t1, p1] = arr[i + 1];
+    return add(p0, mul(sub(p1, p0), Math.min(1, Math.max(0, (rel - t0) / ((t1 - t0) || 1))))); };
+  const tr0 = T[Math.max(0, ph.findIndex((p) => p.name === (tech.trail?.from || ph[1].name)))], tr1 = T[ph.findIndex((p) => p.name === (tech.trail?.to || ph[ph.length - 2].name))];
   const trail = []; for (let t = tr0; t <= tr1 + 1e-9; t += 1 / 240) trail.push([t, solve(t).racket.center]);
-  return { id: tech.id, T, t0: T[0], t1: T[T.length - 1], tc, speed, solve, at, ballAt, ballIn, ballOut, contact: C,
-           tIn0, tOut1, trail, phases: ph, tA, tB };
+  return { id: tech.id, T, t0: T[0], t1: T[T.length - 1], tc, speed, solve, at: grip.L ? ((t) => { const r = solve(t); return { ...at(t), twoHand: at(t).twoHand }; }) : at, ballAt, ballIn, ballOut, contact: C, tIn0, tOut1, trail, phases: ph, tA, tB, grip, keys, rk };
 }
-// output-time table for playback: integrates dt_real = speed(t_real) * dt_out
 export function timeTable(comp, fps = 240, globalSpeed = 1, includeReal = false) {
   const rows = []; let t = comp.t0;
   while (t < comp.t1) { rows.push([t, comp.speed(t), "slow"]); t += comp.speed(t) * globalSpeed / fps; }
   rows.push([comp.t1, 1, "slow"]);
   if (includeReal) for (let t2 = comp.t0; t2 <= comp.t1; t2 += globalSpeed / fps) rows.push([t2, 1, "real"]);
   return rows;
+}
+// anatomical readout for checks / UI
+export function jointReport(ch, res) {
+  const out = {};
+  const Dch = res.D.chest;
+  for (const s of ["r", "l"]) {
+    const J = anglesFromSegments(ch, s, Dch, res.D[`${s}_upper`], res.arms[s].elbow, res.D[`${s}_hand`]);
+    const sm = shoulderMeasures(s, J.shoulder);
+    out[s] = { elbow: res.arms[s].elbow, pron: J.pron, wflex: J.wflex, wdev: J.wdev, shoulderRot: sm.rot, shoulderBack: sm.back, shoulderCross: sm.cross };
+  }
+  return out;
+}
+
+// ------------------------------------------------------------------ layer loader (browser: fetch; node: fs) -------------
+// loadLayer(readJson, bodyPath) -> { ch, layer } ; readJson(path) returns parsed JSON (paths relative to the web root)
+export async function loadLayer(readJson, bodyPath = "body/rocketbox_female.json", implIds = ["padel_racket", "tennis_racket"],
+  gripIds = ["continental", "eastern_fh", "semi_western_fh", "eastern_bh", "two_handed_bh"]) {
+  const body = await readJson(bodyPath);
+  const skel = await readJson(body.skeleton.replace(/^\.\.\//, ""));
+  const ch = createCharacter(skel, body);
+  const layer = { implements: {}, grips: {} };
+  for (const id of implIds) layer.implements[id] = await readJson(`implements/${id}.json`);
+  for (const id of gripIds) layer.grips[id] = await readJson(`grips/${id}.json`);
+  return { ch, layer };
 }

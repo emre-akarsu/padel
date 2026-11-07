@@ -1,0 +1,21 @@
+{
+ "id": "two_handed_bh",
+ "description": "Two-handed backhand: dominant hand continental at the butt, the other hand eastern-forehand directly above it on the handle, palm on the opposite side of the handle (top-hand palm faces the target).",
+ "bevel_deg": -45,
+ "handle_tilt_deg": 16,
+ "fist_offset_m": {
+  "palm": 0.031,
+  "along_fingers": 0.06
+ },
+ "fingers": "wrap",
+ "second_hand": {
+  "grip": "eastern_fh",
+  "along_handle_m": 0.09,
+  "opposite_face": true,
+  "slide_m": [
+   0.075,
+   0.11
+  ],
+  "roll_free_deg": 25
+ }
+}

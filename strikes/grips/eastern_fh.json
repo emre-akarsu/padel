@@ -1,0 +1,1 @@
+{ "id": "eastern_fh", "description": "Shake-hands grip: palm behind the strings. Flat forehands, lobs, returns.", "bevel_deg": 0, "handle_tilt_deg": 16, "fist_offset_m": { "palm": 0.031, "along_fingers": 0.060 }, "fingers": "wrap" }

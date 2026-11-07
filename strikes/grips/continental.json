@@ -1,0 +1,1 @@
+{ "id": "continental", "description": "Hammer grip: base knuckle of the index on bevel 2. Padel all-round grip; tennis serve, volley, slice, smash.", "bevel_deg": -45, "handle_tilt_deg": 16, "fist_offset_m": { "palm": 0.031, "along_fingers": 0.060 }, "fingers": "wrap" }

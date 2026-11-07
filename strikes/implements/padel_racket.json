@@ -1,0 +1,10 @@
+{
+  "id": "padel_racket", "type": "racket", "sport": "padel",
+  "model": "../assets/racket_padel.glb",
+  "frame": "model frame: handle axis -Y (butt toward head), face normal +Z, origin 1 cm beyond the butt cap",
+  "length": 0.455, "butt": 0.010,
+  "handle": { "radius": 0.0175, "from": 0.020, "to": 0.155 },
+  "fist": 0.060,
+  "head": { "center": 0.330, "half_width": 0.130, "half_height": 0.146, "thickness": 0.038 },
+  "sweet_spot": 0.330
+}
