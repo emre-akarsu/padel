@@ -308,6 +308,9 @@ function addInbox(s, source, thumb) {
 const stats = a => { const v = a.filter(x => x != null); if (!v.length) return null; const m = v.reduce((p, c) => p + c, 0) / v.length; return { n: v.length, min: Math.min(...v), max: Math.max(...v), mean: m, sd: Math.sqrt(v.reduce((p, c) => p + (c - m) ** 2, 0) / v.length) }; };
 function renderSummary() {
   const ss = LS.get('padel.sessions', []);
+  const cur = ss[0], prev = cur && ss.slice(1).find(x => x.shot === cur.shot);
+  PadelDrills.load().catch(() => null).then(d => PadelChat.mount($('#sumChat'), () => ({ strokes: cur ? cur.strokes : [], prev: prev ? prev.strokes : null, shot: cur ? cur.shot : S.shot, band: (id, sh) => band(id, sh), shotName, drills: d && d.sets || [],
+    replay: n => { const s = L.strokes && L.strokes[n - 1]; if (!s || !s._frames || cur.id !== L.sessionId) return false; $('#live').hidden = false; $('#setup').hidden = true; openReplay(s, { frames: s._frames }); $('#rpClose').addEventListener('click', () => $('#live').hidden = true, { once: true }); return true; } })));
   if (!ss.length) { $('#sumBody').innerHTML = '<p class="muted">No sessions yet. Run a shadow or drill session.</p>'; return; }
   $('#sumBody').innerHTML = ss.slice(0, 15).map(x => {
     const h = stats(x.strokes.map(s => s.metrics.contactHeightM)), tp = stats(x.strokes.map(s => s.metrics.tempoS));
@@ -373,7 +376,9 @@ $('#upFile').onchange = async e => {
     }
     saveSession({ id: L.sessionId, mode: 'review', shot: S.shot, start: Date.now(), end: Date.now() + res.durationS * 1000, engine: res.engine.name, strokes: res.strokes.map(slim) });
     out.innerHTML = `<div class="card"><table><tr><th>#</th><th>Time</th><th>Shot</th><th>Contact m</th><th>Tempo s</th><th></th></tr>${res.strokes.map((s, i) => `<tr><td>${i + 1}</td><td>${fmt(s.tContact, 1)}</td><td>${esc(shotName(s.shot?.id))}</td><td>${fmt(s.metrics.contactHeightM, 2)}</td><td>${fmt(s.metrics.tempoS, 2)}</td><td><button class="btn" data-rp="${i}">Replay</button></td></tr>`).join('')}</table>
-      <p class="small muted">All strokes were added to the Coach Review Inbox.</p></div>`;
+      <p class="small muted">All strokes were added to the Coach Review Inbox.</p></div><div class="card" id="upChat"></div>`;
+    const ss = LS.get('padel.sessions', []), prev = ss.slice(1).find(x => x.shot === S.shot), rpv = n => { const st = res.strokes[n - 1]; if (!st) return false; $('#live').hidden = false; $('#setup').hidden = true; L.on = false; openReplay(st, { video: v }); $('#rpClose').addEventListener('click', () => $('#live').hidden = true, { once: true }); return true; };
+    PadelDrills.load().catch(() => null).then(d => PadelChat.mount($('#upChat'), () => ({ strokes: res.strokes, prev: prev ? prev.strokes : null, shot: S.shot, band: (id, sh) => band(id, sh), shotName, drills: d && d.sets || [], replay: rpv })));
     out.querySelectorAll('[data-rp]').forEach(b => b.onclick = () => { $('#live').hidden = false; $('#setup').hidden = true; L.on = false; openReplay(res.strokes[+b.dataset.rp], { video: v }); $('#rpClose').addEventListener('click', () => $('#live').hidden = true, { once: true }); });
   } catch (err) { st.textContent = 'Error: ' + err.message; }
 };
