@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kick Serve v6 vs v7</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+:root {
+  --bg: #eef2f5; --surface: #ffffff; --ink: #14212b; --muted: #5a6b78; --line: #d3dce3; --accent: #2f6b45; --accent-ink: #fff;
+  --bad: #b3261e; --good: #2f6b45; --gold: #e9a21a; --cyan: #1d8fb0;
+  --display: "Barlow Condensed", "Arial Narrow", system-ui, sans-serif; --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg: #0e161d; --surface: #16222c; --ink: #e5edf2; --muted: #93a6b4; --line: #26343f; --accent: #5fb07a; --accent-ink: #0b1a10; --bad: #ff8a80; --good: #7fd19b; --cyan: #58e0ff; color-scheme: dark } }
+:root[data-theme="dark"] { --bg: #0e161d; --surface: #16222c; --ink: #e5edf2; --muted: #93a6b4; --line: #26343f; --accent: #5fb07a; --accent-ink: #0b1a10; --bad: #ff8a80; --good: #7fd19b; --cyan: #58e0ff; color-scheme: dark }
+* { box-sizing: border-box }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.5 var(--body) }
+.wrap { max-width: 1280px; margin: 0 auto; padding: 14px max(16px, env(safe-area-inset-right)) 40px max(16px, env(safe-area-inset-left)); display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px }
+header h1 { font: 700 clamp(30px, 6vw, 44px)/1 var(--display); margin: 0 }
+header p { margin: 4px 0 0; color: var(--muted); max-width: 80ch }
+a { color: var(--accent) }
+.stage { position: relative; border-radius: 12px; overflow: hidden; background: #24303b; aspect-ratio: 16 / 9; width: 100%; max-height: 82vh }
+@media (max-width: 700px) { .stage { aspect-ratio: 4 / 5 } }
+.stage canvas { position: absolute; inset: 0; display: block; width: 100%; height: 100%; touch-action: none }
+.split { position: absolute; top: 0; bottom: 0; left: 50%; width: 2px; background: rgba(255, 255, 255, .55); pointer-events: none }
+.lab { position: absolute; top: 10px; font: 700 clamp(18px, 3vw, 30px)/1 var(--display); color: #fff; background: rgba(0, 0, 0, .5); border-radius: 8px; padding: 5px 12px; pointer-events: none; letter-spacing: .02em }
+.lab.l { left: 10px } .lab.r { left: calc(50% + 10px) } .lab.r { background: rgba(20, 90, 50, .78) } .lab.l { background: rgba(120, 30, 25, .72) }
+.cue { position: absolute; bottom: 52px; width: calc(50% - 20px); color: #fff; background: rgba(0, 0, 0, .62); border-radius: 10px; padding: 6px 10px; font-size: clamp(12px, 1.6vw, 16px); text-align: center; pointer-events: none; text-wrap: balance }
+.cue.l { left: 10px } .cue.r { left: calc(50% + 10px) }
+.tag { position: absolute; top: 12px; right: 10px; font: 600 13px var(--mono); color: #1b1200; background: #ffb21e; border-radius: 6px; padding: 5px 9px; pointer-events: none; white-space: nowrap }
+.clock { position: absolute; top: 46px; right: 10px; font: 12px var(--mono); color: #fff; background: rgba(0, 0, 0, .4); border-radius: 6px; padding: 3px 8px; pointer-events: none; white-space: nowrap }
+.views { position: absolute; right: 10px; bottom: 10px; display: flex; gap: 6px }
+.views button { min-height: 34px; padding: 4px 10px; font: 500 13px var(--body); color: #fff; background: rgba(0, 0, 0, .45); border: 1px solid rgba(255, 255, 255, .25); border-radius: 8px; cursor: pointer }
+.views button[aria-pressed="true"] { background: rgba(255, 178, 30, .9); color: #1b1200 }
+.status { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font: 500 16px var(--body) }
+.bar { display: flex; flex-wrap: wrap; gap: 10px 16px; align-items: center; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px }
+.bar button { font: 600 15px var(--body); min-height: 42px; padding: 8px 16px; border-radius: 8px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer }
+.bar label { display: flex; gap: 8px; align-items: center; font-size: 14px; color: var(--muted) }
+.bar input[type=range] { accent-color: var(--accent) }
+#scrub { flex: 1 1 260px; min-width: 0 }
+.key { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted) }
+.sw { display: inline-block; width: 18px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 6px }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 14px }
+.card h2 { font: 700 26px/1.1 var(--display); margin: 0 0 6px }
+.tbl { overflow-x: auto }
+table { border-collapse: collapse; width: 100%; font-size: 14px; min-width: 560px }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--line); vertical-align: top }
+th { font-weight: 600; color: var(--muted) }
+td.num { font-family: var(--mono); white-space: nowrap }
+.pass { color: var(--good); font-weight: 600 } .fail { color: var(--bad); font-weight: 600 }
+.src { font: 11px var(--mono); color: var(--muted); border: 1px solid var(--line); border-radius: 4px; padding: 0 4px; margin-left: 4px }
+ul.flaws { margin: 6px 0 0; padding-left: 20px } ul.flaws li { margin: 3px 0 }
+body.capture { overflow: hidden } body.capture .wrap { padding: 0; max-width: none } body.capture .wrap > :not(.stage) { display: none }
+body.capture .stage { position: fixed; inset: 0; width: 100vw; height: 100vh; max-height: none; aspect-ratio: auto; border-radius: 0 } body.capture .views { display: none }
+body.capture .lab { font-size: 44px; top: 18px; padding: 8px 18px } body.capture .lab.l { left: 18px } body.capture .lab.r { left: calc(50% + 18px) }
+body.capture .cue { font-size: 24px; bottom: 26px } body.capture .tag { font-size: 20px; top: 20px; right: 18px } body.capture .clock { font-size: 17px; top: 62px; right: 18px }
+video { width: 100%; border-radius: 10px; background: #000 }
+</style>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/" } }</script>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Kick serve: v6 vs v7</h1>
+    <p>The same kick serve twice, on one clock and one camera. <b>Left, v6:</b> the feet stay on the ground and over the baseline. <b>Right, v7:</b> the centre of mass drives the body. The right foot slides up, the knees load, the legs drive up, and the player flies on a ballistic arc. They land on the left foot inside the court and recover. <a href="../">Strike Player</a></p>
+  </header>
+  <div class="stage" id="stage">
+    <div class="status" id="status">Loading…</div>
+    <div class="split"></div>
+    <div class="lab l">v6 before</div><div class="lab r">v7 after</div>
+    <div class="tag" id="slowtag" hidden>SLOW MOTION</div>
+    <div class="clock" id="clock"></div>
+    <div class="cue l" id="cueL"></div><div class="cue r" id="cueR"></div>
+    <div class="views"><button data-view="side" aria-pressed="true">Side</button><button data-view="front">Front</button><button data-view="orbit">3D orbit</button></div>
+  </div>
+  <div class="bar">
+    <button id="play">Pause</button>
+    <input id="scrub" type="range" min="0" max="1" step="0.0005" value="0" aria-label="Scrub">
+    <label>Slow-mo <input id="slow" type="range" min="0.1" max="1" step="0.05" value="0.25"><span id="slowv">0.25×</span></label>
+    <label><input id="trail" type="checkbox" checked> Racket trail</label>
+    <label><input id="com" type="checkbox" checked> CoM path</label>
+  </div>
+  <div class="key"><span><i class="sw" style="background:#ffb020"></i>racket path (sweet spot)</span><span><i class="sw" style="background:#58e0ff"></i>whole-body centre of mass (ring = its ground point)</span><span><i class="sw" style="background:#ffd166"></i>baseline</span></div>
+  <section class="card">
+    <h2>Gates</h2>
+    <p style="margin:0 0 8px;color:var(--muted)">Both strokes are measured headless at 120 Hz with <code>scripts/check.mjs</code> (the v6 gates) and <code>scripts/check7.mjs</code> (the v7 whole-body gates). Target ranges come from the v7 spec; the tag says where each number comes from.</p>
+    <div class="tbl"><table id="gates"><thead><tr><th>Gate</th><th>Pass rule</th><th>v6 before</th><th>v7 after</th></tr></thead><tbody></tbody></table></div>
+  </section>
+  <section class="card">
+    <h2>Video</h2>
+    <video controls playsinline preload="metadata" src="kick_serve_v6_vs_v7.mp4"></video>
+  </section>
+  <section class="card">
+    <h2>Known flaws</h2>
+    <ul class="flaws" id="flaws"></ul>
+  </section>
+</div>
+<script type="module" src="compare.js?v=7"></script>
+<script type="module">
+const g = await (await fetch("gates.json")).json();
+const tb = document.querySelector("#gates tbody");
+for (const r of g.rows) {
+  const cell = (x) => `<td class="num ${x.pass === undefined ? "" : x.pass ? "pass" : "fail"}">${x.v}${x.pass === undefined ? "" : x.pass ? " ✓" : " ✗"}</td>`;
+  tb.insertAdjacentHTML("beforeend", `<tr><td>${r.gate}${r.src ? `<span class="src">${r.src}</span>` : ""}</td><td>${r.rule}</td>${cell(r.v6)}${cell(r.v7)}</tr>`);
+}
+document.getElementById("flaws").innerHTML = g.flaws.map((f) => `<li>${f}</li>`).join("");
+</script>
+</body>
+</html>
