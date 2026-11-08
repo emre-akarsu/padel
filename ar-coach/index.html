@@ -128,7 +128,7 @@ pre{white-space:pre-wrap;font-size:12px}
 <section id="live" hidden>
   <div class="stage" id="stage"><video id="cam" playsinline muted autoplay></video><canvas id="ov"></canvas></div>
   <div class="top"><button class="btn" id="liveBack">End</button><div class="grow"><b id="liveTitle"></b> <span class="small" id="liveInfo"></span></div>
-    <button class="btn" id="micBtn" hidden title="Ask by voice: show me the last one, replay 3, how was that?">🎤</button><button class="btn" id="ghostBtn">Ghost</button><button class="btn" id="flipBtn">Flip cam</button></div>
+    <button class="btn" id="micBtn" hidden title="Ask by voice: show me the last one, replay 3, how was that?">🎤</button><button class="btn" id="ghostBtn">Ghost</button><button class="btn" id="flipBtn">Flip cam</button><button class="btn" id="fbLive" title="Report something that looks wrong">Feedback</button></div>
   <div class="cue" id="cue" hidden></div>
   <div class="sub" id="sub" hidden></div>
   <div class="hud" id="hud">
@@ -149,7 +149,7 @@ pre{white-space:pre-wrap;font-size:12px}
   <div id="replay" hidden>
     <canvas id="rp"></canvas>
     <div class="bar"><span id="rpInfo" class="small grow"></span>
-      <button class="btn" data-fb="agree">Agree</button><button class="btn" data-fb="unsure">Not sure</button><button class="btn" data-fb="wrong">Wrong</button>
+      <button class="btn" data-fb="agree">Agree</button><button class="btn" data-fb="unsure">Not sure</button><button class="btn" data-fb="wrong">Wrong</button><button class="btn" id="fbReplay" title="Say what is wrong in this replay">Details…</button>
       <button class="btn" id="rpAgain">Again</button><button class="btn primary" id="rpClose">Close</button></div>
   </div>
 </section>
@@ -167,5 +167,7 @@ pre{white-space:pre-wrap;font-size:12px}
 <script src="drills.js"></script>
 <script src="chat.js"></script>
 <script src="app.js"></script>
+<script src="../feedback/feedback.js?v=1"></script>
+<script src="feedback-hook.js?v=1"></script>
 </body>
 </html>

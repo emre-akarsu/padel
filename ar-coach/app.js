@@ -339,7 +339,7 @@ function stepReplay(now) {
     if (el > tc && el < tc + .5) el = tc; else if (el >= tc + .5) el -= .5;
     t = Math.min(R.t1, R.t0 + el * .25);
   }
-  drawReplay(t);
+  R.tNow = t; drawReplay(t);
 }
 function nearest(arr, t, key = 't') { let b = arr[0]; for (const x of arr) if (Math.abs(x[key] - t) < Math.abs(b[key] - t)) b = x; return b; }
 // Split replay: left = you (video, hit path, contact line), right = the ideal 3D model at the same scale and timing.
@@ -478,6 +478,8 @@ $('#upFile').onchange = async e => {
 };
 
 /* ---------- PWA ---------- */
+// read-only snapshot for the feedback widget (feedback-hook.js)
+window.PadelApp = { snap: () => ({ S, L, DR, RP, REL, engine, shotName }) };
 let deferred = null;
 addEventListener('beforeinstallprompt', e => { e.preventDefault(); deferred = e; $('#installBtn').hidden = false; });
 $('#installBtn').onclick = () => { deferred?.prompt(); $('#installBtn').hidden = true; };
