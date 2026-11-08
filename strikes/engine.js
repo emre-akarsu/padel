@@ -15,7 +15,18 @@ const scene = new THREE.Scene(); scene.background = new THREE.Color(0x24303b); s
 const camera = new THREE.PerspectiveCamera(38, 1, 0.05, 100);
 const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true;
 const VIEWS = { side: [[-3.7, 1.6, 2.4], [0, 1.15, 0.25]], front: [[0.3, 1.5, 5.2], [0, 1.1, 0]], back: [[0.6, 1.9, -4.2], [0, 1.2, 0.3]], top: [[-0.2, 5.5, 1.2], [0, 0.9, 0.3]] };
-function setView(v) { const [p, t] = VIEWS[v]; camera.position.set(...p); controls.target.set(...t); controls.update(); }
+// v11 fit (2026-11-08): strokes that travel (jumping serves land ~0.6 m in, then step) stayed framed for a fixed spot and
+// left the screen on phones. FIT = centre and span of the body + racket over the whole stroke, set on every load.
+let FIT = { x: 0, z: 0, s: 1 }, curView = "side";
+function setView(v) { curView = v; const [p, t] = VIEWS[v];
+  const tt = [t[0] + FIT.x, t[1], t[2] + FIT.z], pp = [0, 1, 2].map((i) => tt[i] + (p[i] - t[i]) * FIT.s);
+  camera.position.set(...pp); controls.target.set(...tt); controls.update(); }
+function fitStroke(c) { let x0 = 9, x1 = -9, z0 = 9, z1 = -9;
+  for (let t = c.t0; t <= c.t1 + 1e-9; t += 0.05) { const r = c.solve(t); for (const q of Object.values(r.pos).concat([r.racket.center])) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); z0 = Math.min(z0, q[2]); z1 = Math.max(z1, q[2]); } }
+  const span = Math.max(x1 - x0, z1 - z0); FIT = { x: (x0 + x1) / 2, z: (z0 + z1) / 2 - 0.25, s: Math.max(1, span / 1.7) };
+  // keep the stock framing for strokes that stay in place (centre near the old target, small span)
+  if (Math.abs(FIT.z) < 0.15 && Math.abs(FIT.x) < 0.15 && span < 1.7) FIT = { x: 0, z: 0, s: 1 };
+  setView(curView); }
 setView("side");
 scene.add(new THREE.HemisphereLight(0xdfe8f2, 0x2a3540, 1.1));
 const key = new THREE.DirectionalLight(0xfff3e4, 2.4); key.position.set(-3, 6, 4); key.castShadow = true;
@@ -134,6 +145,7 @@ function compile() {
   const t = state.tech; const rate = state.slow ?? t.slowmo?.rate ?? 1; $("slow").value = rate; $("slowv").textContent = `${rate.toFixed(2)}×`;
   state.comp = compileTechnique(ch, t, state.sport, layer, { slowRate: rate, contactHeight: state.contact });
   state.table = timeTable(state.comp, 240, state.speed, state.replay); state.idx = 0;
+  try { fitStroke(state.comp); } catch (e) { console.warn('fit', e); }
   for (const o of [trailObj, inObj, outObj]) if (o) fx.remove(o);
   const c = state.comp;
   trailObj = tube(c.trail.map((r) => r[1]), 0.0075, 0xffb020, true); fx.add(trailObj);
