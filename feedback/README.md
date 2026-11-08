@@ -4,6 +4,12 @@ A **Feedback** button on Strike Player (`strikes/`, `strikes/v5/`), the kick-ser
 and the AR coach (`ar-coach/`: floating on menus, **Feedback** in the live top bar, **Details…** next to Agree / Not sure / Wrong in the replay).
 Pressing it pauses the animation and snapshots the exact context; the user adds tags, severity and a note. No account.
 
+**Feedback in any context (v2):**
+- **Every page** that loads `feedback.js` gets the button. `<script src=".../feedback.js" data-app="bandeja">` mounts it with page-level context (title, URL); a page hook (Strike Player, kick pages, AR coach) re-mounts it with the stroke, stage, time and frame. Added to home, bandeja/, coach/, ar-coach/library.html and both bench pages.
+- **After every session or drill (AR coach):** a one-tap card at the top of the summary ("How was this drill? 👍 Good / 👎 Something was off / Add details"). 👍 saves at once; 👎 opens the form. The record carries the session (mode, shot, strokes with metrics and checks, mastery). In live, when a drill step completes, a small "Drill step done. Anything off?" prompt appears for 10 s without stopping the drill.
+- **System errors:** uncaught errors, unhandled promise rejections, failed script/model loads, and error text the app shows (camera denied, engine error, upload failed) show "Something went wrong. Report" (at most 3 per page, 20 s apart). The form opens with `app error / bug` preselected and the error shown. Pages can call `PadelFeedback.reportError(msg)` for errors they catch.
+- **Every record** carries `kind` (`general | error | drill | session`), `feedback.rating` (`up | down` for the one-tap card) and `extra.recent_errors` (last 5 errors, including `console.error`). `aggregate.py` adds an **App errors** table and 👍/👎 counts per stroke.
+
 | File | Role |
 |---|---|
 | `feedback/feedback.js` | Widget, local store (`localStorage['padel.feedback.v1']`, last 300), sender, export, GitHub-issue link |

@@ -96,4 +96,5 @@ $('#csv').onclick = () => {
   const csv = head + k.join(',') + '\n' + rows.map(r => k.map(x => r[x]).join(',')).join('\n');
   const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' })); a.download = 'padel_bench_' + new Date().toISOString().slice(0, 16).replace(/:/g, '') + '.csv'; a.click();
 };
-</script></body></html>
+</script><script src="../feedback/feedback.js?v=2" data-app="ar-coach-bench"></script>
+</body></html>

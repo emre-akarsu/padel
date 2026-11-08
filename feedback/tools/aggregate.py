@@ -157,7 +157,9 @@ def main():
         if isinstance(shot, str) and shot.startswith("data:image/"):
             shot_path = os.path.join("shots", r["id"] + ".jpg")
             open(os.path.join(a.out, shot_path), "wb").write(base64.b64decode(shot.split(",", 1)[1]))
-        v["items"].append({"id": r.get("id"), "created": r.get("created"), "severity": f.get("severity", "major"), "tags": f.get("tags", []), "text": f.get("text", ""),
+        ex = r.get("extra") or {}
+        v["items"].append({"id": r.get("id"), "created": r.get("created"), "kind": r.get("kind", "general"), "rating": f.get("rating"),
+                           "error": (ex.get("error") or {}).get("msg"), "session": ex.get("session_line"), "severity": f.get("severity", "major"), "tags": f.get("tags", []), "text": f.get("text", ""),
                            "t_s": m.get("t_s"), "frame": m.get("frame"), "stage": m.get("stage"), "stage_label": m.get("stage_label"), "cue": m.get("cue"),
                            "panel": (r.get("extra") or {}).get("panel"), "hand": s.get("hand"), "url": r.get("url"), "issue": (r.get("extra") or {}).get("github_issue"),
                            "screenshot": shot_path, "client": (r.get("client") or {}).get("anon")})
@@ -169,17 +171,35 @@ def main():
         stages = collections.Counter(i["stage_label"] or i["stage"] or "?" for i in all_it)
         score = sum(SEV_W.get(i["severity"], 3) for i in all_it)
         cur = sum(SEV_W.get(i["severity"], 3) for v in g["versions"].values() if v["is_latest_spec"] or v["spec_on_disk"] for i in v["items"])
-        fix.append({**{k: g[k] for k in ("sport", "stroke_id", "stroke_name")}, "reports": len(all_it), "score": score, "score_on_current_specs": cur,
+        kinds = collections.Counter(i["kind"] for i in all_it)
+        ratings = collections.Counter(i["rating"] for i in all_it if i["rating"])
+        fix.append({**{k: g[k] for k in ("sport", "stroke_id", "stroke_name")}, "reports": len(all_it), "kinds": dict(kinds), "ratings": dict(ratings), "score": score, "score_on_current_specs": cur,
                     "reporters": len({i["client"] for i in all_it}), "top_tags": tags.most_common(6), "stages": stages.most_common(6),
                     "versions": list(g["versions"].values())})
     fix.sort(key=lambda x: (-x["score_on_current_specs"], -x["score"]))
-    json.dump({"schema": "padel.fixlist/1", "records": len(items), "strokes": fix}, open(os.path.join(a.out, "fix_list.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
+    # app errors across all records: the reported error plus the recent-error log each record carries
+    errs = collections.OrderedDict()
+    for r in items:
+        ex = r.get("extra") or {}
+        for e in ([ex["error"]] if ex.get("error") else []) + (ex.get("recent_errors") or []):
+            k = re.sub(r"\d+", "#", e.get("msg", ""))[:160]
+            d = errs.setdefault(k, {"msg": e.get("msg"), "kind": e.get("kind"), "src": e.get("src"), "line": e.get("line"), "records": set(), "reported": 0, "apps": set(), "first": r.get("created"), "last": r.get("created")})
+            d["records"].add(r.get("id")); d["apps"].add(f'{(r.get("app") or {}).get("id")} {(r.get("app") or {}).get("version") or ""}'.strip()); d["last"] = max(d["last"] or "", r.get("created") or "")
+            if ex.get("error") is e:
+                d["reported"] += 1
+    err_list = sorted(({**d, "records": len(d["records"]), "apps": sorted(d["apps"])} for d in errs.values()), key=lambda d: (-d["reported"], -d["records"]))
+    json.dump({"schema": "padel.fixlist/1", "records": len(items), "kinds": dict(collections.Counter(r.get("kind", "general") for r in items)), "errors": err_list, "strokes": fix}, open(os.path.join(a.out, "fix_list.json"), "w", encoding="utf-8"), indent=1, ensure_ascii=False)
 
     L = [f"# Feedback fix list\n\n{len(items)} reports on {len(fix)} strokes. Score = minor 1, major 3, broken 5. "
-         "\"current\" means the reported spec hash still matches a spec on disk, so the fault is probably still there.\n"]
+         "\"current\" means the reported spec hash still matches a spec on disk, so the fault is probably still there. "
+         "Kinds: " + ", ".join(f"{k} {n}" for k, n in collections.Counter(r.get("kind", "general") for r in items).items()) + "\n"]
+    if err_list:
+        L.append("\n## App errors\n\n| Error | Kind | Where | Reported by user | In records | Apps | Last seen |\n|---|---|---|---|---|---|---|\n")
+        for d in err_list[:40]:
+            L.append(f"| {str(d['msg']).replace('|', '/')[:140]} | {d['kind']} | {d['src'] or ''}{':' + str(d['line']) if d['line'] else ''} | {d['reported']} | {d['records']} | {', '.join(d['apps'])} | {(d['last'] or '')[:16]} |\n")
     for x in fix:
         L.append(f"\n## {x['sport']} · {x['stroke_name'] or x['stroke_id']} (`{x['stroke_id']}`)\n\n{x['reports']} reports from {x['reporters']} devices · score {x['score']} "
-                 f"({x['score_on_current_specs']} on current specs) · tags: {', '.join(f'{t} {n}' for t, n in x['top_tags']) or '-'} · stages: {', '.join(f'{t} {n}' for t, n in x['stages'])}\n")
+                 f"({x['score_on_current_specs']} on current specs){' · drill/session 👍 ' + str(x['ratings'].get('up', 0)) + ' 👎 ' + str(x['ratings'].get('down', 0)) if x['ratings'] else ''} · tags: {', '.join(f'{t} {n}' for t, n in x['top_tags']) or '-'} · stages: {', '.join(f'{t} {n}' for t, n in x['stages'])}\n")
         for v in x["versions"]:
             state = "latest spec" if v["is_latest_spec"] else ("on disk: " + v["spec_on_disk"]) if v["spec_on_disk"] else "older or unknown spec"
             L.append(f"\n**{v['app']} {v['version'] or ''}** · spec `#{v['spec_hash'] or '-'}` · {state}\n")
@@ -188,7 +208,10 @@ def main():
                                                      f"frame {i['frame']}" if i["frame"] is not None else None, i["panel"]] if p)
                 links = " ".join(p for p in [f"[frame]({i['screenshot']})" if i["screenshot"] else "", f"[open]({i['url']})" if i["url"] else "",
                                              f"[issue]({i['issue']})" if i["issue"] else ""] if p)
-                L.append(f"- [{i['severity']}] {where} · {', '.join(i['tags']) or '-'}: {i['text'] or '(no text)'} {links}".rstrip() + "\n")
+                kind = "" if i["kind"] == "general" else f"{i['kind']}{' ' + ('👍' if i['rating'] == 'up' else '👎') if i['rating'] else ''}: "
+                if i["error"]:
+                    kind += f"`{i['error'][:120]}` "
+                L.append(f"- [{i['severity']}] {kind}{where} · {', '.join(i['tags']) or '-'}: {i['text'] or '(no text)'} {links}".rstrip() + "\n")
     open(os.path.join(a.out, "fix_list.md"), "w", encoding="utf-8").write("".join(L))
     print(f"{len(items)} records -> {len(fix)} strokes -> {os.path.join(a.out, 'fix_list.md')}")
 
