@@ -111,6 +111,11 @@ let racketObj = null;
 function placeRacket(rk) { if (!racketObj) return; racketObj.position.set(...rk.origin); racketObj.quaternion.set(rk.R[0], rk.R[1], rk.R[2], rk.R[3]); }
 
 // ---------------------------------------------------------------- state / UI
+// every ideal stroke's slow pass lasts SLOW_S seconds at speed 1x (emre: 3-4 s swings)
+const SLOW_S = 3.5;
+function slowLen(c) { let T = 0; const dt = 0.002; for (let t = c.t0; t < c.t1; t += dt) T += dt / c.speed(t); return T; }
+function tt(c) { const slow = timeTable(c, 240, state.speed * slowLen(c) / SLOW_S, false);  // full-speed pass keeps real time
+  return state.replay ? slow.concat(timeTable(c, 240, state.speed, true).filter((r) => r[2] === "real")) : slow; }
 const state = { sports: {}, sport: null, tech: null, comp: null, table: [], idx: 0, playing: true, speed: 1, slow: null, hand: "R",
                 contact: 0, replay: true, trail: true };
 const index = await (await fetch("specs/index.json")).json();
@@ -144,7 +149,7 @@ function load() {
 function compile() {
   const t = state.tech; const rate = state.slow ?? t.slowmo?.rate ?? 1; $("slow").value = rate; $("slowv").textContent = `${rate.toFixed(2)}×`;
   state.comp = compileTechnique(ch, t, state.sport, layer, { slowRate: rate, contactHeight: state.contact });
-  state.table = timeTable(state.comp, 240, state.speed, state.replay); state.idx = 0;
+  state.table = tt(state.comp); state.idx = 0;
   try { fitStroke(state.comp); } catch (e) { console.warn('fit', e); }
   for (const o of [trailObj, inObj, outObj]) if (o) fx.remove(o);
   const c = state.comp;
@@ -178,7 +183,7 @@ function frame(i) {
 // controls
 $("play").onclick = () => { state.playing = !state.playing; $("play").textContent = state.playing ? "Pause" : "Play"; };
 $("scrub").oninput = (e) => { state.playing = false; $("play").textContent = "Play"; state.idx = Math.round(+e.target.value * (state.table.length - 1)); frame(state.idx); };
-$("speed").oninput = (e) => { state.speed = +e.target.value; $("speedv").textContent = `${state.speed.toFixed(2)}×`; const f = state.idx / state.table.length; state.table = timeTable(state.comp, 240, state.speed, state.replay); state.idx = Math.floor(f * state.table.length); };
+$("speed").oninput = (e) => { state.speed = +e.target.value; $("speedv").textContent = `${state.speed.toFixed(2)}×`; const f = state.idx / state.table.length; state.table = tt(state.comp); state.idx = Math.floor(f * state.table.length); };
 $("slow").oninput = (e) => { state.slow = +e.target.value; compile(); };
 $("contact").oninput = (e) => { state.contact = +e.target.value; $("contactv").textContent = `${state.contact >= 0 ? "+" : ""}${Math.round(state.contact * 100)} cm`; compile(); };
 $("hand").onclick = () => { state.hand = state.hand === "R" ? "L" : "R"; world.scale.x = state.hand === "R" ? 1 : -1; $("hand").textContent = state.hand === "R" ? "Right-handed" : "Left-handed"; };
