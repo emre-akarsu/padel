@@ -173,7 +173,7 @@ async function processLive(t) {
   draw(r, t);
   // HUD
   L.fpsN++; if (performance.now() - L.fpsT > 1000) { L.fps = L.fpsN * 1000 / (performance.now() - L.fpsT); L.fpsN = 0; L.fpsT = performance.now(); }
-  $('#liveInfo').textContent = `v20 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
+  $('#liveInfo').textContent = `v21 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
   $('#hPhase').textContent = r.phase ? PH_NAME[r.phase.id] : '-';
   const q = r.quality, fb = $('#fbStat');
   livePanel(r, q);

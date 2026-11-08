@@ -23,7 +23,7 @@ function setView(v) { curView = v; const [p, t] = VIEWS[v];
   camera.position.set(...pp); controls.target.set(...tt); controls.update(); }
 function fitStroke(c) { let x0 = 9, x1 = -9, z0 = 9, z1 = -9;
   for (let t = c.t0; t <= c.t1 + 1e-9; t += 0.05) { const r = c.solve(t); for (const q of Object.values(r.pos).concat([r.racket.center])) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); z0 = Math.min(z0, q[2]); z1 = Math.max(z1, q[2]); } }
-  const span = Math.max(x1 - x0, z1 - z0); FIT = { x: (x0 + x1) / 2, z: (z0 + z1) / 2 - 0.25, s: Math.max(1, span / 1.7) };
+  const span = Math.max(x1 - x0, z1 - z0); FIT = { x: (x0 + x1) / 2, z: (z0 + z1) / 2 - 0.25, s: Math.min(1.15, Math.max(1, span / 2.2)) };   // fix 2026-11-08: zoom-out capped (serves were shown ~35% smaller)
   // keep the stock framing for strokes that stay in place (centre near the old target, small span)
   if (Math.abs(FIT.z) < 0.15 && Math.abs(FIT.x) < 0.15 && span < 1.7) FIT = { x: 0, z: 0, s: 1 };
   setView(curView); }
@@ -111,11 +111,19 @@ let racketObj = null;
 function placeRacket(rk) { if (!racketObj) return; racketObj.position.set(...rk.origin); racketObj.quaternion.set(rk.R[0], rk.R[1], rk.R[2], rk.R[3]); }
 
 // ---------------------------------------------------------------- state / UI
-// every ideal stroke's slow pass lasts SLOW_S seconds at speed 1x (emre: 3-4 s swings)
+// every ideal stroke's slow pass lasts about SLOW_S seconds at speed 1x (emre: 3-4 s swings).
+// Fix 2026-11-08: the first version (e2759e7) sped the whole slow pass up uniformly, so preparation and recovery
+// played 1.1-2.0x FASTER than real time (bandeja 2x). Now only the slow-motion depth changes: outside the slow
+// window the stroke always runs at real time, and the slow-motion rate around contact is raised just enough
+// to land on SLOW_S (never above 0.5x, so contact stays visibly slow). A slow-motion rate set by hand on the slider is used as is.
 const SLOW_S = 3.5;
-function slowLen(c) { let T = 0; const dt = 0.002; for (let t = c.t0; t < c.t1; t += dt) T += dt / c.speed(t); return T; }
-function tt(c) { const slow = timeTable(c, 240, state.speed * slowLen(c) / SLOW_S, false);  // full-speed pass keeps real time
-  return state.replay ? slow.concat(timeTable(c, 240, state.speed, true).filter((r) => r[2] === "real")) : slow; }
+function fitSlow(c, rate0) { if (state.slow != null || !(rate0 < 1)) return;
+  const dt = 0.002, W = []; for (let t = c.t0; t < c.t1; t += dt) W.push((1 - c.speed(t)) / (1 - rate0));
+  const len = (r) => W.reduce((T, w) => T + dt / (1 - (1 - r) * w), 0);
+  if (len(rate0) <= SLOW_S) return; let lo = rate0, hi = 1;
+  for (let i = 0; i < 30; i++) { const m = (lo + hi) / 2; if (len(m) > SLOW_S) lo = m; else hi = m; }
+  const r = Math.min(0.5, hi), w0 = c.speed; c.speed = (t) => 1 - (1 - r) * (1 - w0(t)) / (1 - rate0); c.fitRate = r; }
+function tt(c) { return timeTable(c, 240, state.speed, state.replay); }
 const state = { sports: {}, sport: null, tech: null, comp: null, table: [], idx: 0, playing: true, speed: 1, slow: null, hand: "R",
                 contact: 0, replay: true, trail: true };
 const index = await (await fetch("specs/index.json")).json();
@@ -149,6 +157,7 @@ function load() {
 function compile() {
   const t = state.tech; const rate = state.slow ?? t.slowmo?.rate ?? 1; $("slow").value = rate; $("slowv").textContent = `${rate.toFixed(2)}×`;
   state.comp = compileTechnique(ch, t, state.sport, layer, { slowRate: rate, contactHeight: state.contact });
+  fitSlow(state.comp, rate); if (state.comp.fitRate) { $("slow").value = state.comp.fitRate; $("slowv").textContent = `${state.comp.fitRate.toFixed(2)}×`; }
   state.table = tt(state.comp); state.idx = 0;
   try { fitStroke(state.comp); } catch (e) { console.warn('fit', e); }
   for (const o of [trailObj, inObj, outObj]) if (o) fx.remove(o);

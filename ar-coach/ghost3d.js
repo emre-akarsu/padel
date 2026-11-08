@@ -52,9 +52,9 @@ try {
   // Playback: the Strike Player's own slow-motion curve (slow around contact), normalised so the whole stroke
   // plays in a fixed time. playU(shot, f) maps playback fraction f in [0,1] to stroke time u in [0,1].
   const plays = {};
-  st.playU = (id, f) => {
+  st.playU = (id, f, P = 3.5) => {
     if (!(id in plays)) { const t = techOf(id); let tab = null;
-      try { if (t) { const c2 = compileTechnique(ch, t, sport, layer, {}), N = 400, dt = (c2.t1 - c2.t0) / N; tab = [0]; for (let i = 0; i < N; i++) tab.push(tab[i] + dt / Math.max(.05, c2.speed(c2.t0 + (i + .5) * dt))); const T = tab[N]; tab = tab.map(x => x / T); } } catch (e) { tab = null; }
+      try { if (t) { const c2 = compileTechnique(ch, t, sport, layer, {}), N = 400, dt = (c2.t1 - c2.t0) / N, r0 = t.slowmo?.rate ?? 1; const W = []; for (let i = 0; i < N; i++) W.push(r0 < 1 ? (1 - c2.speed(c2.t0 + (i + .5) * dt)) / (1 - r0) : 0); const len = (r) => W.reduce((a, w) => a + dt / (1 - (1 - r) * w), 0); let r = r0; if (len(r0) > P) { let lo = r0, hi = 1; for (let k = 0; k < 30; k++) { const m = (lo + hi) / 2; if (len(m) > P) lo = m; else hi = m; } r = hi; } /* fix 2026-11-08: raise slow-mo rate instead of compressing the whole stroke (prep/recovery never faster than real time) */ tab = [0]; for (let i = 0; i < N; i++) tab.push(tab[i] + dt / (1 - (1 - r) * W[i])); const T = tab[N]; tab = tab.map(x => x / T); } } catch (e) { tab = null; }
       plays[id] = tab; }
     const tab = plays[id]; f = Math.max(0, Math.min(1, f)); if (!tab) return f;
     let i = 1; while (i < tab.length - 1 && tab[i] < f) i++; const a = tab[i - 1], b = tab[i];
