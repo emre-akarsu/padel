@@ -1,1 +1,13 @@
-{ "id": "eastern_bh", "description": "Palm on top of the handle: one-handed topspin backhand.", "bevel_deg": -90, "handle_tilt_deg": 16, "fist_offset_m": { "palm": 0.031, "along_fingers": 0.060 }, "fingers": "wrap" }
+{
+ "id": "eastern_bh",
+ "description": "Palm on top of the handle: one-handed topspin backhand.",
+ "bevel_deg": -90,
+ "handle_tilt_deg": 16,
+ "fist_offset_m": {
+  "palm": 0.031,
+  "along_fingers": 0.06
+ },
+ "fingers": "wrap",
+ "bh_face": 1,
+ "face_note": "+Z of this grip points away from the wrist (knuckle side): the backhand hits with +Z. Verified 2026-11-08 by the forearm test."
+}

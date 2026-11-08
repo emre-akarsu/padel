@@ -455,7 +455,7 @@ export function optimizeArm(ch, side, Dchest, shoulderPos, target, init, grip, e
       const n = qrot(R, [0, 0, 1]), d = qrot(R, [0, -1, 0]);
       const ps = target.posScale ?? 0.01, fs = target.faceScale ?? 8, ds = target.dirScale ?? 25;
       if (target.center) c += (len(sub(center, target.center)) / ps) ** 2;
-      if (target.face) { const fa = Math.min(angOf(n, target.face), angOf(mul(n, -1), target.face)); c += (target.faceW ?? 1) * (fa / fs) ** 2; }
+      if (target.face) { const fa = target.faceSigned ? angOf(n, target.face) : Math.min(angOf(n, target.face), angOf(mul(n, -1), target.face)); c += (target.faceW ?? 1) * (fa / fs) ** 2; }
       if (target.dir) c += (target.dirW ?? 1) * (angOf(d, target.dir) / ds) ** 2;
       if (extra.body) {                     // keep the racket head out of the head / torso volumes
         for (let i = 0; i < 12; i++) { const a = 2 * Math.PI * i / 12;
@@ -536,12 +536,19 @@ export function solveKey(ch, p, grip, opts = {}, prev = null) {
   const rk = grip.rk, gs = grip.R;
   const shR = trunk.pos[ch.N("R UpperArm")], shL = trunk.pos[ch.N("L UpperArm")];
   // seed: analytic IK + swivel search on the exact racket pose; then the bounded optimiser
-  const Rt = basis(p.racket.dir, p.racket.face), handT = qmul(Rt, qinv(gs.G));
+  // v2 (2026-11-08): the hitting face is signed. +Z of the implement = the palm-side face. Forehands, serves and overheads
+  // hit with the palm side, backhands with the back of the hand. v1 accepted either face, so 8 strokes hit with the wrong
+  // side (forearm twisted ~180 deg). Contact: face toward the outgoing ball x faceSide; other keys: the sign that keeps the
+  // palm-side normal continuous with the neighbouring key already solved.
+  let faceT = p.racket.face, signed = false;
+  if (opts.faceSide && opts.outVel) { faceT = dot(faceT, opts.outVel) < 0 ? mul(faceT, -opts.faceSide) : mul(faceT, opts.faceSide); signed = true; }
+  else if (opts.palmRef) { faceT = dot(faceT, opts.palmRef) < 0 ? mul(faceT, -1) : faceT; signed = true; }
+  const Rt = basis(p.racket.dir, faceT), handT = qmul(Rt, qinv(gs.G));
   const wristT = sub(sub(p.racket.center, qrot(Rt, [0, -rk.center, 0])), qrot(handT, gs.g));
   const seed = solveArm(ch, "r", D.chest, shR, wristT, handT, norm(p.r_pole), { ...(p.r_wrist || {}) });
   const twoH = (p.two_hand || 0) > 0.5 && grip.L;
   const C = opts.isContact;
-  const tgtR = { center: p.racket.center, face: p.racket.face, dir: p.racket.dir, pole: norm(p.r_pole), pref: p.r_wrist || {},
+  const tgtR = { center: p.racket.center, face: faceT, faceSigned: signed, dir: p.racket.dir, pole: norm(p.r_pole), pref: p.r_wrist || {},
                  posScale: C ? (twoH ? 0.04 : 0.01) : 0.06, faceScale: C ? 8 : 30, dirScale: C ? 25 : 45, faceW: C ? 3 : 1, dirW: twoH ? 0.08 : (C ? 0.6 : 0.5),
                  contW: C ? 0.15 : Math.min(8, opts.contK ?? 1), prior: C ? 0 : 1 };
   const P = trunk.pos, cap = ch.body.body_capsules_m, hd = add(P[ch.N("Head")], [0, 0.09, 0]);
@@ -610,9 +617,14 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
     if (opts.contactHeight && i === iC) { q.racket.center[1] += opts.contactHeight; q.pelvis[1] += opts.contactHeight * 0.25; }
     return q; });
   const keys = new Array(keyPose.length);
-  keys[iC] = solveKey(ch, keyPose[iC], grip, { isContact: true }, null);
-  for (let i = iC + 1; i < keyPose.length; i++) keys[i] = solveKey(ch, keyPose[i], grip, { contK: (0.3 / (T[i] - T[i - 1])) ** 2 }, keys[i - 1]);
-  for (let i = iC - 1; i >= 0; i--) keys[i] = solveKey(ch, keyPose[i], grip, { contK: (0.3 / (T[i + 1] - T[i])) ** 2 }, keys[i + 1]);
+  const isBH = tech.face_side ? tech.face_side === "back" : /backhand/.test(tech.family + " " + tech.id + " " + (tech.side || ""));
+  const gdef = layer.grips[tech.grip] || {};   // which model face hits, per grip: forehand side +Z (palm side), backhand side -Z, except grips that say otherwise
+  const faceSide = tech.face_side === "either" ? 0 : (isBH ? (gdef.bh_face ?? -1) : (gdef.fh_face ?? 1));
+  const signed = opts.signedFace !== false && faceSide !== 0;
+  const palmOf = (K, q) => poseFromState(ch, { trunk: K.trunk, arms: K.arms, feet: { r: { foot: q.r_leg.foot, yaw: q.r_leg.yaw ?? 0, lift: q.r_leg.lift || 0 }, l: { foot: q.l_leg.foot, yaw: q.l_leg.yaw ?? 0, lift: q.l_leg.lift || 0 } }, twoHand: 0 }, grip).racket.normal;
+  keys[iC] = solveKey(ch, keyPose[iC], grip, { isContact: true, ...(signed ? { faceSide, outVel: norm(tech.ball.out.vel) } : {}) }, null);
+  for (let i = iC + 1; i < keyPose.length; i++) keys[i] = solveKey(ch, keyPose[i], grip, { contK: (0.3 / (T[i] - T[i - 1])) ** 2, ...(signed ? { palmRef: palmOf(keys[i - 1], keyPose[i - 1]) } : {}) }, keys[i - 1]);
+  for (let i = iC - 1; i >= 0; i--) keys[i] = solveKey(ch, keyPose[i], grip, { contK: (0.3 / (T[i + 1] - T[i])) ** 2, ...(signed ? { palmRef: palmOf(keys[i + 1], keyPose[i + 1]) } : {}) }, keys[i + 1]);
   // the loop closes on the first key: the last key (same pose) reuses it exactly
   if (JSON.stringify(keyPose[0]) === JSON.stringify(keyPose[keyPose.length - 1])) keys[keys.length - 1] = keys[0];
   // joint-space splines (rebuilt when automatic via-keys are added)
