@@ -9,6 +9,7 @@ const S = Object.assign({ engine: 'onnx', use: 'machine', view: 'side', height: 
 const saveS = () => LS.set('padel.settings', S);
 const PH_COL = { preparation: '#4fc3f7', backswing: '#ab47bc', forward_swing: '#ff9f43', contact: '#d8ea3a', follow_through: '#5fb07a', recovery: '#90a4ae', ready: '#cfd8dc' };
 const PH_NAME = { ready: 'Ready', preparation: 'Preparation', backswing: 'Backswing', forward_swing: 'Forward swing', contact: 'Contact', follow_through: 'Follow-through', recovery: 'Recovery' };
+const PLAY_S = 3.5; // ideal stroke playback length (emre: a 3-4 s swing), then a 0.8 s pause
 let REL = null, engine = null, engKey = '';
 const shotName = id => (PadelGhost.specs.shots[id] || {}).name || id || 'Stroke';
 const fmt = (v, d = 1) => v === null || v === undefined ? '-' : (+v).toFixed(d);
@@ -172,7 +173,7 @@ async function processLive(t) {
   draw(r, t);
   // HUD
   L.fpsN++; if (performance.now() - L.fpsT > 1000) { L.fps = L.fpsN * 1000 / (performance.now() - L.fpsT); L.fpsN = 0; L.fpsT = performance.now(); }
-  $('#liveInfo').textContent = `v19 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
+  $('#liveInfo').textContent = `v20 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
   $('#hPhase').textContent = r.phase ? PH_NAME[r.phase.id] : '-';
   const q = r.quality, fb = $('#fbStat');
   livePanel(r, q);
@@ -195,8 +196,8 @@ function draw(r, t) {
     const fit = PadelGhost.fitTo(kp); if (fit) { fit.facing = facingOf(kp); L.lastFit = fit; }
   }
   if (L.ghostOn && L.mode === 'shadow') {
-    const spec = PadelGhost.specs.shots[S.shot], period = spec.durationS * 2 + 1; // half speed + 1 s pause
-    const u = Math.min(1, (t % period) / (spec.durationS * 2)); // own full loop at half speed: every stage, start to finish (follow it)
+    const spec = PadelGhost.specs.shots[S.shot];
+    const pf = Math.min(1, (t % (PLAY_S + .8)) / PLAY_S), u = window.PadelGhost3D?.playU ? window.PadelGhost3D.playU(S.shot, pf) : pf; // whole stroke in 3.5 s, slow around contact // own full loop at half speed: every stage, start to finish (follow it)
     // beside the player, not on top (overlapping bodies were unreadable): shift towards the emptier side of the frame
     // keep the whole ghost inside the picture: it was drawn 2.6 torsos away and often fell half off the edge
     const f = L.lastFit || { anchor: [ov.width * .3, ov.height * .5], scale: ov.height / 6, facing: 1 }, room = [f.anchor[0], ov.width - f.anchor[0]];

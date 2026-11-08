@@ -49,6 +49,17 @@ try {
   const hipOf = p => [(p[B + 'L Thigh'][0] + p[B + 'R Thigh'][0]) / 2, (p[B + 'L Thigh'][1] + p[B + 'R Thigh'][1]) / 2, (p[B + 'L Thigh'][2] + p[B + 'R Thigh'][2]) / 2];
   const torso = p => { const h = hipOf(p), s = [(p[B + 'L UpperArm'][1] + p[B + 'R UpperArm'][1]) / 2, (p[B + 'L UpperArm'][2] + p[B + 'R UpperArm'][2]) / 2]; return Math.hypot(s[0] - h[1], s[1] - h[2]); };
 
+  // Playback: the Strike Player's own slow-motion curve (slow around contact), normalised so the whole stroke
+  // plays in a fixed time. playU(shot, f) maps playback fraction f in [0,1] to stroke time u in [0,1].
+  const plays = {};
+  st.playU = (id, f) => {
+    if (!(id in plays)) { const t = techOf(id); let tab = null;
+      try { if (t) { const c2 = compileTechnique(ch, t, sport, layer, {}), N = 400, dt = (c2.t1 - c2.t0) / N; tab = [0]; for (let i = 0; i < N; i++) tab.push(tab[i] + dt / Math.max(.05, c2.speed(c2.t0 + (i + .5) * dt))); const T = tab[N]; tab = tab.map(x => x / T); } } catch (e) { tab = null; }
+      plays[id] = tab; }
+    const tab = plays[id]; f = Math.max(0, Math.min(1, f)); if (!tab) return f;
+    let i = 1; while (i < tab.length - 1 && tab[i] < f) i++; const a = tab[i - 1], b = tab[i];
+    return (i - 1 + (b > a ? (f - a) / (b - a) : 0)) / (tab.length - 1);
+  };
   /** draw(ctx, shot, u, fit {anchor:[px,py], scale: torso px, facing: +1/-1}, opts {alpha, leftHanded}) -> true if drawn */
   st.draw = (ctx, shot, u, fit, o = {}) => {
     const c = comp(shot); if (!c || !fit) return false;
