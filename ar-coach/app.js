@@ -79,7 +79,7 @@ const L = { on: false };
 const cam = $('#cam'), ov = $('#ov'), octx = ov.getContext('2d');
 
 async function startLive(mode) {
-  Object.assign(L, { mode, on: true, running: false, busy: false, ring: [], keep: new Set(), strokes: [], trail: [], idx: 0, lastProc: 0, fpsN: 0, fpsT: performance.now(), fps: 0, dropped: 0, faults: 0, sessionId: 'S' + Date.now().toString(36), start: Date.now(), ghostOn: mode === 'shadow', facing: L.facing || (mode === 'shadow' ? 'user' : 'environment'), lastFit: null });
+  Object.assign(L, { mode, on: true, running: false, busy: false, ring: [], keep: new Set(), strokes: [], trail: [], idx: 0, lastProc: 0, fpsN: 0, fpsT: performance.now(), fps: 0, dropped: 0, faults: 0, sessionId: 'S' + Date.now().toString(36), start: Date.now(), ghostOn: mode === 'shadow', facing: L.facing || (mode === 'shadow' ? 'user' : 'environment'), lastFit: null, gDir: 0 });
   $('#live').hidden = false; $('#setup').hidden = false; $('#replay').hidden = true; $('#lastReplay').hidden = true;
   const use = mode === 'shadow' ? 'shadow' : (USE_TIPS[S.use] && S.use !== 'shadow' ? S.use : 'machine');
   $('#liveTitle').textContent = (DR ? `${DR.set.title} · step ${DR.stepIndex + 1}: ` : USE_NAME[use] + ' · ') + shotName(S.shot);
@@ -162,6 +162,7 @@ function onFrame(now) {
 }
 async function processLive(t) {
   const w = cam.videoWidth, h = cam.videoHeight; if (!w) return;
+  if (ov.width !== w || ov.height !== h) { ov.width = w; ov.height = h; } // phones change size on rotate / after start: keep overlay pixels = video pixels
   const bmpP = createImageBitmap(cam, { resizeWidth: 480, resizeHeight: Math.round(480 * h / w) }).catch(() => null);
   const r = await engine.processFrame({ image: cam, width: w, height: h, t, index: L.idx++ });
   const bmp = await bmpP;
@@ -171,11 +172,13 @@ async function processLive(t) {
   draw(r, t);
   // HUD
   L.fpsN++; if (performance.now() - L.fpsT > 1000) { L.fps = L.fpsN * 1000 / (performance.now() - L.fpsT); L.fpsN = 0; L.fpsT = performance.now(); }
-  $('#liveInfo').textContent = `ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
+  $('#liveInfo').textContent = `v15 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
   $('#hPhase').textContent = r.phase ? PH_NAME[r.phase.id] : '-';
   const q = r.quality, fb = $('#fbStat');
   if (fb) { fb.className = q.fullBody && !q.message ? 'ok' : 'bad'; fb.textContent = q.fullBody && !q.message ? 'Full body in frame ✓' : (q.message || 'Step into the frame'); }
-  if (L.running) for (const s of r.strokes) onStroke(s);
+  if (L.running) for (const s of r.strokes) {
+    if (q.fullBody) onStroke(s); else { flashCue('Not counted: your whole body (head to feet) must be in the picture'); }
+  }
 }
 
 function draw(r, t) {
@@ -192,12 +195,16 @@ function draw(r, t) {
   }
   if (L.ghostOn && L.lastFit && L.mode === 'shadow') {
     const spec = PadelGhost.specs.shots[S.shot], period = spec.durationS * 2 + 1; // half speed + 1 s pause
-    let u = r.phase && r.phase.progress != null && r.phase.id !== 'ready' ? r.phase.progress : Math.min(1, ((t % period) / (spec.durationS * 2)));
+    const u = Math.min(1, (t % period) / (spec.durationS * 2)); // own full loop at half speed: every stage, start to finish (follow it)
     // beside the player, not on top (overlapping bodies were unreadable): shift towards the emptier side of the frame
     // keep the whole ghost inside the picture: it was drawn 2.6 torsos away and often fell half off the edge
-    const f = L.lastFit, room = [f.anchor[0], ov.width - f.anchor[0]], dir = room[1] >= room[0] ? 1 : -1, half = f.scale * 1.3;
-    const gx = Math.max(half, Math.min(ov.width - half, f.anchor[0] + dir * f.scale * 2.6));
-    drawGhost(octx, S.shot, u, { ...f, anchor: [gx, f.anchor[1]] }, s * 2.4);
+    const f = L.lastFit, room = [f.anchor[0], ov.width - f.anchor[0]];
+    if (!L.gDir || room[L.gDir > 0 ? 1 : 0] < f.scale * 1.9) L.gDir = room[1] >= room[0] ? 1 : -1; // stay on one side (no jumping)
+    const dir = L.gDir;
+    // beside you and fully in the picture; on a narrow (portrait) frame she shrinks instead of overlapping you, feet on your ground line
+    const k = Math.max(.45, Math.min(1, Math.max(...room) / (f.scale * 3.9))), gs = f.scale * k;
+    const gx = Math.max(gs * 1.3, Math.min(ov.width - gs * 1.3, f.anchor[0] + dir * (f.scale * 1.3 + gs * 1.3)));
+    drawGhost(octx, S.shot, u, { ...f, scale: gs, anchor: [gx, f.anchor[1] + (f.scale - gs) * 2.0] }, s * 2.4);
     const sub = $('#sub'); sub.hidden = false; sub.textContent = 'Coach: ' + PadelGhost.labelAt(S.shot, u);
   } else $('#sub').hidden = true;
 }
@@ -340,6 +347,7 @@ function stepReplay(now) {
     t = Math.min(R.t1, R.t0 + el * .25);
   }
   R.tNow = t; drawReplay(t);
+  if (L.on && !R.src.video && t >= R.t1) { R.doneAt = R.doneAt || now; if (now - R.doneAt > 900) { $('#replay').hidden = true; cancelAnimationFrame(R.raf); } }
 }
 function nearest(arr, t, key = 't') { let b = arr[0]; for (const x of arr) if (Math.abs(x[key] - t) < Math.abs(b[key] - t)) b = x; return b; }
 // Split replay: left = you (video, hit path, contact line), right = the ideal 3D model at the same scale and timing.
@@ -356,6 +364,7 @@ function drawReplay(t) {
   let wy = null;
   if (s.track.length) {
     const kp = sc(nearest(s.track, t).keypoints);
+    PadelGhost.draw(rctx, kp, { width: lw * 1.6, alpha: .9 });
     const spec = PadelGhost.specs.shots[s.shot?.id || S.shot], fit = PadelGhost.fitTo(kp);
     if (spec && fit) { // ideal model, time-warped so its contact matches yours, drawn in its own half
       const cu = spec.contactU, u = t < s.tContact ? cu * (t - s.tStart) / Math.max(.05, s.tContact - s.tStart) : cu + (1 - cu) * (t - s.tContact) / Math.max(.05, s.tEnd - s.tContact);
@@ -374,7 +383,7 @@ function drawReplay(t) {
   labels.forEach(a => label(a[0], a[1], a[2], lw));
   label('YOU', W * .03, lw * 12, lw); label('IDEAL', ox + W * .03, oy + lw * 12, lw);
   const ph = s.phases.find(p => t >= p.tStart && t <= p.tEnd);
-  label((ph ? PH_NAME[ph.id] : t < s.tStart ? 'Ready' : 'Recovery') + ' (approx.)  0.25x', W * .03, H - lw * 6, lw);
+  label('REPLAY · slow motion 0.25x · ' + (ph ? PH_NAME[ph.id] : t < s.tStart ? 'Ready' : 'Recovery'), W * .03, H - lw * 6, lw);
 }
 function label(txt, x, y, lw) { rctx.font = `600 ${Math.round(lw * 8)}px system-ui`; const w = rctx.measureText(txt).width; rctx.fillStyle = '#000a'; rctx.fillRect(x - lw * 2, y - lw * 8, w + lw * 4, lw * 10.5); rctx.fillStyle = '#fff'; rctx.fillText(txt, x, y); }
 $('#rpClose').onclick = () => { $('#replay').hidden = true; RP?.src.video?.pause(); };

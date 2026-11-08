@@ -1,5 +1,5 @@
 /* Offline: app code network-first (always newest when online, cache when offline); big assets (models, GLB, CDN libs) cache-first. */
-const V = 'ar-coach-v14';
+const V = 'ar-coach-v15';
 const SHELL = ['./', 'index.html', 'app.js', 'ghost.js', 'bench.html', 'engine/core.js', 'engine/mock.js', 'engine/onnx.js', 'engine/remote.js', 'ghost3d.js', 'buddy3d.js', 'mastery.js', 'drills.js', 'chat.js', 'drills.json', 'library.html', 'techniques.json', 'release.json', 'feedback-hook.js', '../feedback/feedback.js', 'manifest.webmanifest', 'icon.svg', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', e => e.waitUntil(caches.open(V).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())));
 self.addEventListener('activate', e => e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== V).map(k => caches.delete(k)))).then(() => self.clients.claim())));
