@@ -61,6 +61,12 @@ table{width:100%;border-collapse:collapse;font-size:14px}td,th{padding:6px 4px;b
 .mstat{min-width:120px}.mbar{height:6px;border-radius:3px;background:#ffffff33;margin-top:3px;overflow:hidden}.mbar i{display:block;height:100%;width:0;background:#d8ea3a;transition:width .4s}
 .lvl{font-size:11px;font-weight:700;background:var(--ball);color:#14212b;border-radius:999px;padding:1px 6px;margin-left:4px}
 pre{white-space:pre-wrap;font-size:12px}
+/* v18 phone layout: one-row top bar and HUD, cue and body hint below the bar, never hidden */
+.top{flex-wrap:nowrap}.top .grow{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.top .btn{padding:6px 9px;white-space:nowrap;flex:none}
+.cue{top:calc(58px + env(safe-area-inset-top));z-index:10;white-space:normal;max-width:92vw;text-align:center}
+.bodyHint{position:absolute;left:50%;transform:translateX(-50%);top:calc(104px + env(safe-area-inset-top));z-index:9;background:#e0a060;color:#14212b;font-weight:700;padding:5px 12px;border-radius:999px;font-size:14px;max-width:92vw;text-align:center}
+@media (max-width:700px){#liveInfo{display:none}.hud{flex-wrap:nowrap;gap:4px}.stat{min-width:0;flex:1}.stat b{font-size:17px}.stat span{font-size:10px}.mstat{min-width:0;flex:1.4}.sub{font-size:15px;bottom:84px}}
+@media (max-height:500px){#liveInfo{display:none}.hud{flex-wrap:nowrap}.stat b{font-size:17px}.sub{bottom:66px}#buddy{width:78px;height:104px;bottom:64px}#buddyMsg{bottom:172px}}
 </style>
 </head>
 <body>
@@ -130,6 +136,7 @@ pre{white-space:pre-wrap;font-size:12px}
   <div class="top"><button class="btn" id="liveBack">End</button><div class="grow"><b id="liveTitle"></b> <span class="small" id="liveInfo"></span></div>
     <button class="btn" id="micBtn" hidden title="Ask by voice: show me the last one, replay 3, how was that?">🎤</button><button class="btn" id="ghostBtn">Ghost</button><button class="btn" id="flipBtn">Flip cam</button><button class="btn" id="fbLive" title="Report something that looks wrong">Feedback</button></div>
   <div class="cue" id="cue" hidden></div>
+  <div class="bodyHint" id="bodyHint" hidden></div>
   <div class="sub" id="sub" hidden></div>
   <div class="hud" id="hud">
     <div class="stat"><b id="hCount">0</b><span>strokes</span></div>

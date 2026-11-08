@@ -172,9 +172,10 @@ async function processLive(t) {
   draw(r, t);
   // HUD
   L.fpsN++; if (performance.now() - L.fpsT > 1000) { L.fps = L.fpsN * 1000 / (performance.now() - L.fpsT); L.fpsN = 0; L.fpsT = performance.now(); }
-  $('#liveInfo').textContent = `v16 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
+  $('#liveInfo').textContent = `v18 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
   $('#hPhase').textContent = r.phase ? PH_NAME[r.phase.id] : '-';
   const q = r.quality, fb = $('#fbStat');
+  const bh = $('#bodyHint'); bh.hidden = !L.running || (q.fullBody && !q.message); if (!bh.hidden) bh.textContent = (q.message || 'Step back: head to feet in the picture') + ' · strokes count only with your whole body in view';
   if (fb) { fb.className = q.fullBody && !q.message ? 'ok' : 'bad'; fb.textContent = q.fullBody && !q.message ? 'Full body in frame ✓' : (q.message || 'Step into the frame'); }
   if (L.running) for (const s of r.strokes) {
     if (q.fullBody) onStroke(s); else { flashCue('Not counted: your whole body (head to feet) must be in the picture'); }
@@ -193,18 +194,23 @@ function draw(r, t) {
     PadelGhost.draw(octx, kp, { width: s * 1.4, alpha: .9 }); // the RTMPose skeleton on your body (was never drawn live)
     const fit = PadelGhost.fitTo(kp); if (fit) { fit.facing = facingOf(kp); L.lastFit = fit; }
   }
-  if (L.ghostOn && L.lastFit && L.mode === 'shadow') {
+  if (L.ghostOn && L.mode === 'shadow') {
     const spec = PadelGhost.specs.shots[S.shot], period = spec.durationS * 2 + 1; // half speed + 1 s pause
     const u = Math.min(1, (t % period) / (spec.durationS * 2)); // own full loop at half speed: every stage, start to finish (follow it)
     // beside the player, not on top (overlapping bodies were unreadable): shift towards the emptier side of the frame
     // keep the whole ghost inside the picture: it was drawn 2.6 torsos away and often fell half off the edge
-    const f = L.lastFit, room = [f.anchor[0], ov.width - f.anchor[0]];
+    const f = L.lastFit || { anchor: [ov.width * .3, ov.height * .5], scale: ov.height / 6, facing: 1 }, room = [f.anchor[0], ov.width - f.anchor[0]];
     if (!L.gDir || room[L.gDir > 0 ? 1 : 0] < f.scale * 1.9) L.gDir = room[1] >= room[0] ? 1 : -1; // stay on one side (no jumping)
     const dir = L.gDir;
     // beside you and fully in the picture; on a narrow (portrait) frame she shrinks instead of overlapping you, feet on your ground line
-    const k = Math.max(.45, Math.min(1, Math.max(...room) / (f.scale * 3.9))), gs = f.scale * k;
-    const gx = Math.max(gs * 1.3, Math.min(ov.width - gs * 1.3, f.anchor[0] + dir * (f.scale * 1.3 + gs * 1.3)));
-    drawGhost(octx, S.shot, u, { ...f, scale: gs, anchor: [gx, f.anchor[1] + (f.scale - gs) * 2.0] }, s * 2.4);
+    // she is ~4.9 torsos tall with the racket up (2.0 hip->feet, 2.9 hip->racket): always fully inside the picture
+    const H = ov.height, gMax = H * .9 / 4.9, full = !!(L.lastFit && r.quality && r.quality.fullBody);
+    let gs, gy;
+    if (full) { const k = Math.max(.45, Math.min(1, Math.max(...room) / (f.scale * 3.9))); gs = Math.min(gMax, f.scale * k); gy = Math.min(H * .97 - gs * 2.0, f.anchor[1] + (f.scale - gs) * 2.0); }
+    else { gs = gMax * .85; gy = H * .96 - gs * 2.0; } // close-up / half body: her own size, standing on the bottom of the picture
+    gy = Math.max(gs * 2.9 + H * .02, gy);
+    const gx = Math.max(gs * 1.3, Math.min(ov.width - gs * 1.3, full ? f.anchor[0] + dir * (f.scale * 1.3 + gs * 1.3) : (dir > 0 ? ov.width - gs * 1.6 : gs * 1.6)));
+    drawGhost(octx, S.shot, u, { ...f, scale: gs, anchor: [gx, gy] }, s * 2.4);
     const sub = $('#sub'); sub.hidden = false; sub.textContent = 'Coach: ' + PadelGhost.labelAt(S.shot, u);
   } else $('#sub').hidden = true;
 }
