@@ -14,7 +14,7 @@
   function createOnnx(init) {
     let o = Object.assign({ mode: 'drill', shot: 'bandeja', view: 'side', playerHeightM: 1.8, handedness: 'right', checks: [],
       poseUrl: '../coach/models/rtmpose-s.onnx', detUrl: '', detEvery: 5, provider: 'webgpu' }, init);
-    let pose = null, det = null, an = null, box = null, n = 0, tap = null, persons = [], ep = null;
+    let lostSince = null, sweep = 0, pose = null, det = null, an = null, box = null, n = 0, tap = null, persons = [], ep = null;
     const cv = document.createElement('canvas'); cv.width = PW; cv.height = PH; const cx = cv.getContext('2d', { willReadFrequently: true });
     const dv = document.createElement('canvas'); dv.width = dv.height = DS; const dx = dv.getContext('2d', { willReadFrequently: true });
     const info = { name: 'onnx-rtmpose-s', version: '0.1', capabilities: { live: true, video: true, dense: false, shotClassifier: false, shots: [], checks: [] } };
@@ -85,11 +85,15 @@
       async processFrame(f) {
         const a = performance.now();
         if (det && (n % o.detEvery === 0 || !box)) { persons = (await detect(f)).map((p, i) => ({ id: i + 1, bbox: p.bbox, score: p.score, keypoints: null })); const s = pick(persons); if (s) box = s.bbox; }
+        // no detector: after ~0.5 s without the player, sweep left / centre / right full-body boxes until found
+        // (before, it kept looking where the player used to be and never found them again)
+        if (!det && lostSince !== null && f.t - lostSince > .5) { const xs = [.3, 0, .6]; box = [f.width * xs[sweep++ % 3], f.height * .05, f.width * .4, f.height * .9]; }
         if (!box) box = [f.width * .3, f.height * .05, f.width * .4, f.height * .9]; // centred full-body prior
         n++;
         const kp = await runPose(f, box);
         const good = kp.filter(k => k[2] > .3).length >= 8;
-        const nb = good ? kpBox(kp, f.width, f.height) : null; box = nb || (det ? null : box);
+        const nb = good ? kpBox(kp, f.width, f.height) : null;
+        lostSince = good ? null : (lostSince ?? f.t); box = nb || (det ? null : box);
         const r = an.update(f.t, good ? kp : null, f.width, f.height);
         const me = { id: 0, bbox: nb || box, score: good ? 1 : 0, keypoints: kp };
         const ps = det ? persons.map(p => p.bbox === box ? me : p) : [me];
@@ -97,7 +101,7 @@
       },
       analyzeVideo(file, opt) { return PadelCore.analyzeVideoByFrames(this, file, opt); },
       selectSubject(x, y) { tap = [x, y]; box = null; if (!det) box = [x - 100, y - 200, 200, 400]; },
-      reset() { an && an.reset(); box = null; n = 0; },
+      reset() { an && an.reset(); box = null; n = 0; lostSince = null; },
       async dispose() { pose && await pose.release?.(); det && await det.release?.(); pose = det = null; }
     };
   }
