@@ -78,7 +78,8 @@
       count++;
       const m = {
         strokeCount: count,
-        tempoS: +(pk.t - st.tStart).toFixed(3),
+        // overheads: tempo = swing start (after the lift-and-wait) to contact, so the wait for the ball does not count
+        tempoS: +(pk.t - (OVER.includes(o.shot) && st.segStart && st.segStart < pk.t ? st.segStart : st.tStart)).toFixed(3),
         contactHeightM: +((ground - kp[d.w][1]) / pxM).toFixed(2),
         contactAheadM: +(((kp[d.w][0] - hip[0]) * facing(kp, pk.vx)) / pxM).toFixed(2),
         elbowAngleContactDeg: Math.round(angle(kp[d.s], kp[d.e], kp[d.w]) ?? NaN) || null,
@@ -128,7 +129,7 @@
           st.quietSince = v < o.lo ? (st.quietSince ?? t) : null;
           if ((st.quietSince !== null && t - st.quietSince >= o.quietS) || t - st.tStart > o.maxS) { st.segs.push(st.peak); st.endT = t; state = 'pending'; }
         } else { // pending: a pause (e.g. prep then swing) within mergeS continues the same stroke
-          if (v > o.hi && t - st.endT < mergeS() && t - st.tStart < o.maxS) { state = 'active'; st.peak = { t, v, vx, kp }; st.quietSince = null; }
+          if (v > o.hi && t - st.endT < mergeS() && t - st.tStart < o.maxS) { state = 'active'; st.peak = { t, v, vx, kp }; st.quietSince = null; st.segStart = st.endT - o.quietS; }
           else if (t - st.endT >= mergeS() || t - st.tStart > o.maxS) {
             const mx = Math.max(...st.segs.map(p => p.v)); st.peak = st.segs.filter(p => p.v >= .6 * mx).pop(); // swing = last strong segment
             const s = finish(st.endT); if (s) { out.strokes.push(s); out.checks = s.checks; } state = 'idle'; lastQuietT = t; st = null;

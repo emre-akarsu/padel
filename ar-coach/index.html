@@ -65,6 +65,11 @@ pre{white-space:pre-wrap;font-size:12px}
 .top{flex-wrap:nowrap}.top .grow{min-width:0;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}.top .btn{padding:6px 9px;white-space:nowrap;flex:none}
 .cue{top:calc(58px + env(safe-area-inset-top));z-index:10;white-space:normal;max-width:92vw;text-align:center}
 .bodyHint{position:absolute;left:50%;transform:translateX(-50%);top:calc(104px + env(safe-area-inset-top));z-index:9;background:#e0a060;color:#14212b;font-weight:700;padding:5px 12px;border-radius:999px;font-size:14px;max-width:92vw;text-align:center}
+.livePanel{position:absolute;left:max(8px,env(safe-area-inset-left));top:calc(56px + env(safe-area-inset-top));z-index:9;background:#0e161dd9;border:1px solid #ffffff2a;border-radius:12px;padding:8px 10px;max-width:min(330px,60vw);font-size:13px;line-height:1.3}
+.livePanel .st{font-weight:800;font-size:14px;margin-bottom:3px}.livePanel .st.ok{color:#9be37a}.livePanel .st.bad{color:#f0b070}
+.livePanel .ph span{opacity:.6}.livePanel table{font-size:12px;margin-top:3px}.livePanel td{padding:1px 3px;border:0}.livePanel tr.ok td:first-child{color:#9be37a}.livePanel tr.bad td:first-child{color:#f0a060}.livePanel td.t{opacity:.6}
+.livePanel .nt{font-size:11px;opacity:.65;margin-top:3px}
+.cue{top:auto;bottom:calc(130px + env(safe-area-inset-bottom))}
 @media (max-width:700px){#liveInfo{display:none}.hud{flex-wrap:nowrap;gap:4px}.stat{min-width:0;flex:1}.stat b{font-size:17px}.stat span{font-size:10px}.mstat{min-width:0;flex:1.4}.sub{font-size:15px;bottom:84px}}
 @media (max-height:500px){#liveInfo{display:none}.hud{flex-wrap:nowrap}.stat b{font-size:17px}.sub{bottom:66px}#buddy{width:78px;height:104px;bottom:64px}#buddyMsg{bottom:172px}}
 </style>
@@ -136,7 +141,7 @@ pre{white-space:pre-wrap;font-size:12px}
   <div class="top"><button class="btn" id="liveBack">End</button><div class="grow"><b id="liveTitle"></b> <span class="small" id="liveInfo"></span></div>
     <button class="btn" id="micBtn" hidden title="Ask by voice: show me the last one, replay 3, how was that?">🎤</button><button class="btn" id="ghostBtn">Ghost</button><button class="btn" id="flipBtn">Flip cam</button><button class="btn" id="fbLive" title="Report something that looks wrong">Feedback</button></div>
   <div class="cue" id="cue" hidden></div>
-  <div class="bodyHint" id="bodyHint" hidden></div>
+  <div class="livePanel" id="livePanel" hidden></div>
   <div class="sub" id="sub" hidden></div>
   <div class="hud" id="hud">
     <div class="stat"><b id="hCount">0</b><span>strokes</span></div>

@@ -172,10 +172,10 @@ async function processLive(t) {
   draw(r, t);
   // HUD
   L.fpsN++; if (performance.now() - L.fpsT > 1000) { L.fps = L.fpsN * 1000 / (performance.now() - L.fpsT); L.fpsN = 0; L.fpsT = performance.now(); }
-  $('#liveInfo').textContent = `v18 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
+  $('#liveInfo').textContent = `v19 · ghost ${window.PadelGhost3D?.ready ? '3D' : window.PadelGhost3D?.error ? 'stick (' + window.PadelGhost3D.error.slice(0, 40) + ')' : 'loading'} · ${engine.info.name} · ${L.fps.toFixed(0)} fps · ${r.timing.inferenceMs.toFixed(0)} ms · cam ${L.camFps ? Math.round(L.camFps) : '?'} fps`;
   $('#hPhase').textContent = r.phase ? PH_NAME[r.phase.id] : '-';
   const q = r.quality, fb = $('#fbStat');
-  const bh = $('#bodyHint'); bh.hidden = !L.running || (q.fullBody && !q.message); if (!bh.hidden) bh.textContent = (q.message || 'Step back: head to feet in the picture') + ' · strokes count only with your whole body in view';
+  livePanel(r, q);
   if (fb) { fb.className = q.fullBody && !q.message ? 'ok' : 'bad'; fb.textContent = q.fullBody && !q.message ? 'Full body in frame ✓' : (q.message || 'Step into the frame'); }
   if (L.running) for (const s of r.strokes) {
     if (q.fullBody) onStroke(s); else { flashCue('Not counted: your whole body (head to feet) must be in the picture'); }
@@ -224,7 +224,27 @@ function facingOf(kp) { // nose ahead of ears => facing that way; fall back to +
   const ear = (kp[3][2] > kp[4][2] ? kp[3] : kp[4]); return kp[0][2] > .3 && ear[2] > .3 ? Math.sign(kp[0][0] - ear[0]) || 1 : 1;
 }
 
+// Always-on live panel: what the app is doing right now, the stage, and the last stroke's measured checks.
+// Checks are measured values vs the target band; no spoken corrections until a check passes its release gate.
+function livePanel(r, q) {
+  const el = $('#livePanel'); if (!el) return;
+  const full = q.fullBody && !q.message, now = performance.now();
+  let st, cls;
+  if (!r.skeleton) { st = 'Looking for you… step into the picture'; cls = 'bad'; }
+  else if (!L.running) { st = 'Tap Start to begin counting'; cls = ''; }
+  else if (!full) { st = (q.message || 'Step back: head to feet in view') + '. Strokes are not counted.'; cls = 'bad'; }
+  else if (L.lastStrokeAt && now - L.lastStrokeAt < 3500) { st = 'Stroke ' + L.strokes.length + ' measured ✓'; cls = 'ok'; }
+  else if (r.phase && r.phase.id !== 'ready') { st = 'Swing seen… measuring'; cls = 'ok'; }
+  else { st = 'Ready: swing now'; cls = 'ok'; }
+  const ls = L.strokes.length ? L.strokes[L.strokes.length - 1] : null;
+  const rows = ls ? ls.checks.filter(c => gate(c.id).show).map(c => { const d = gate(c.id).def, v = c.value == null ? '-' : d.unit === 'bool' ? (c.value ? 'yes' : 'no') : fmt(c.value, d.unit === 'deg' ? 0 : 2) + (d.unit === 's' ? ' s' : d.unit === 'm' ? ' m' : '°');
+    const b = d.unit === 'bool' ? 'yes' : c.band.join('-'); return `<tr class="${c.pass === null ? '' : c.pass ? 'ok' : 'bad'}"><td>${c.pass === null ? '·' : c.pass ? '✓' : '✗'}</td><td>${esc(d.label)}</td><td>${v}</td><td class="t">${b}</td></tr>`; }).join('') : '';
+  const html = `<div class="st ${cls}">${esc(st)}</div><div class="ph">Stage: <b>${r.phase ? PH_NAME[r.phase.id] : '-'}</b> <span>(approx.)</span></div>` +
+    (ls ? `<div class="ph">Last stroke ${L.strokes.length}: ✓ ${ls.checks.filter(c => c.pass === true).length} in target, ✗ ${ls.checks.filter(c => c.pass === false).length} outside</div><table>${rows}</table><div class="nt">Measured, not coach-validated yet: no spoken corrections.</div>` : '<div class="nt">After each counted stroke, your checks appear here (✓ in target, ✗ outside).</div>');
+  if (html !== el._h) { el.innerHTML = html; el._h = html; } el.hidden = false;
+}
 function onStroke(s) {
+  L.lastStrokeAt = performance.now();
   L.strokes.push(s);
   const n = L.strokes.length; $('#hCount').textContent = countTxt(n);
   $('#hTempo').textContent = fmt(s.metrics.tempoS, 2); $('#hHeight').textContent = fmt(s.metrics.contactHeightM, 2);
