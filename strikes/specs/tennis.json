@@ -70,7 +70,7 @@
    "name": "Flat serve",
    "family": "serve",
    "handed": "R",
-   "summary": "Flat first serve: toss further in front and to the right, foot-up loading with a smaller back arch than the kick, legs drive up just before contact, contact at the top of the jump well in front of the baseline with the face square, land on the left foot further inside the court.",
+   "summary": "First-serve power: toss in front and right, trophy position, deep racket drop, full extension, contact high with the face square.",
    "grip": "continental",
    "contact": {
     "phase": "contact"
@@ -448,7 +448,7 @@
      "name": "contact",
      "label": "Contact",
      "t": 1.16,
-     "cue": "Brush up the back of the ball",
+     "cue": "Full reach, square face",
      "pose": {
       "pelvis": [
        0.0083,
@@ -462,7 +462,7 @@
       "head_pitch": -24,
       "racket": {
        "center": [
-        0,
+        0.0,
         2.398055511901621,
         0.32736778032965963
        ],
@@ -534,7 +534,7 @@
      "name": "follow_through",
      "label": "Follow-through",
      "t": 1.3177,
-     "cue": "Swing up and out to the right",
+     "cue": "Pronate through",
      "pose": {
       "pelvis": [
        0.0877,
@@ -548,14 +548,14 @@
       "head_pitch": -6,
       "racket": {
        "center": [
-        -0.6618021744971163,
-        1.4926821214985102,
-        1.2849869105154648
+        0.2835915040225021,
+        0.9713742232340483,
+        1.2806964427191578
        ],
        "dir": [
-        -0.635998728003816,
-        -0.21199957600127206,
-        0.741998516004452
+        0.3361223109812157,
+        -0.5496264806183366,
+        0.6291263216188137
        ],
        "face": [
         0.2,
@@ -569,9 +569,8 @@
        0.4
       ],
       "r_wrist": {
-       "wflex": 5,
-       "pron": 55,
-       "wdev": -10
+       "wflex": 10,
+       "pron": 65
       },
       "l_arm": {
        "hand": [
@@ -621,7 +620,7 @@
      "name": "finish",
      "label": "Finish",
      "t": 1.62,
-     "cue": "Finish on the right side",
+     "cue": "Land inside, finish left",
      "pose": {
       "pelvis": [
        -0.0437,
@@ -710,7 +709,7 @@
      "name": "settle",
      "label": "Settle",
      "t": 1.7,
-     "cue": "Hold the finish",
+     "cue": "Land inside, finish left",
      "pose": {
       "pelvis": [
        -0.0437,
@@ -888,7 +887,7 @@
      "name": "ready_end",
      "label": "Ready",
      "t": 2.75,
-     "cue": "Hold the finish",
+     "cue": "Land inside, finish left",
      "pose": {
       "pelvis": [
        -0.0437,
@@ -1346,6 +1345,9 @@
      "wrist": [
       "wflex",
       "pron"
+     ],
+     "shoulder": [
+      "rot"
      ]
     },
     "warp": {
@@ -1356,6 +1358,10 @@
      "wrist": [
       -60,
       -6
+     ],
+     "shoulder": [
+      -31,
+      -34.5
      ]
     }
    },
@@ -2666,7 +2672,7 @@
    "name": "Slice serve",
    "family": "serve",
    "handed": "R",
-   "summary": "Flat first serve: toss further in front and to the right, foot-up loading with a smaller back arch than the kick, legs drive up just before contact, contact at the top of the jump well in front of the baseline with the face square, land on the left foot further inside the court.",
+   "summary": "Serve with sidespin: toss further right, the racket face brushes round the outside of the ball, swing across to the left.",
    "grip": "continental",
    "contact": {
     "phase": "contact"
@@ -3144,14 +3150,14 @@
       "head_pitch": -6,
       "racket": {
        "center": [
-        -0.8618021744971163,
-        1.4926821214985102,
-        1.2849869105154648
+        0.4003218463831908,
+        1.4344498743654395,
+        1.1549772912577558
        ],
        "dir": [
-        -0.635998728003816,
-        -0.21199957600127206,
-        0.741998516004452
+        0.5076730825668095,
+        -0.6092076990801715,
+        0.6092076990801715
        ],
        "face": [
         0.2,
@@ -3165,9 +3171,8 @@
        0.4
       ],
       "r_wrist": {
-       "wflex": 5,
-       "pron": 55,
-       "wdev": -10
+       "wflex": 10,
+       "pron": 65
       },
       "l_arm": {
        "hand": [
@@ -3306,7 +3311,7 @@
      "name": "settle",
      "label": "Settle",
      "t": 1.7,
-     "cue": "Hold the finish",
+     "cue": "Finish left",
      "pose": {
       "pelvis": [
        -0.0437,
@@ -3484,7 +3489,7 @@
      "name": "ready_end",
      "label": "Ready",
      "t": 2.75,
-     "cue": "Hold the finish",
+     "cue": "Finish left",
      "pose": {
       "pelvis": [
        -0.0437,

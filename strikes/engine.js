@@ -138,7 +138,7 @@ if (location.hostname.endsWith("github.io")) {
   } catch (e) { /* offline or rate-limited: index.json is enough */ }
 }
 const sportIds = [...new Set([...index.sports, ...found, ...(url.searchParams.get("sport") ? [url.searchParams.get("sport")] : [])])];
-for (const s of sportIds) { try { state.sports[s] = await (await fetch(`specs/${s}.json?v=11`, { cache: "no-cache" })).json(); } catch (e) { console.warn("spec", s, e); } }
+for (const s of sportIds) { try { state.sports[s] = await (await fetch(`specs/${s}.json?v=12`, { cache: "no-cache" })).json(); } catch (e) { console.warn("spec", s, e); } }
 for (const s of [...sportIds]) if (!state.sports[s]) sportIds.splice(sportIds.indexOf(s), 1);
 const selSport = $("sport"), selTech = $("tech");
 for (const s of sportIds) selSport.add(new Option(state.sports[s].name, s));
