@@ -48,8 +48,11 @@
   /** createAnalyzer(opts) -> { update(t, kps, w, h) -> partial FrameResult, reset(), configure() }
    *  opts: playerHeightM, handedness, shot, checks (release.json checks), hi/lo thresholds (body heights / s) */
   function createAnalyzer(opts) {
-    let o = Object.assign({ playerHeightM: 1.8, handedness: 'right', shot: null, checks: [], hi: 0.8, lo: 0.3, quietS: 0.18, mergeS: 0.9, maxS: 3.5, expectS: 1.4 }, opts);
+    let o = Object.assign({ playerHeightM: 1.8, handedness: 'right', shot: null, checks: [], hi: 0.8, lo: 0.3, quietS: 0.18, mergeS: 0.9, maxS: 3.5, expectS: 1.4, minTempoS: 0.2 }, opts);
     let filt = [], hist = [], bodyPx = null, state = 'idle', st = null, count = 0, last = emptyMetrics(0), lastV = 0, lastQuietT = 0, seq = 0;
+    // overheads lift the racket, wait for the ball, then swing: that wait can be well over a second,
+    // so a longer merge window keeps prep + swing as ONE stroke (with 0.9 s the lift counted as the stroke)
+    const OVER = ['bandeja', 'vibora', 'smash', 'smash_x3', 'bajada', 'serve'], mergeS = () => OVER.includes(o.shot) ? Math.max(o.mergeS, 1.6) : o.mergeS;
     const dom = () => o.handedness === 'left' ? { w: K.lw, s: K.ls, e: K.le, ow: K.rw, os: K.rs } : { w: K.rw, s: K.rs, e: K.re, ow: K.lw, os: K.ls };
 
     function smooth(t, kps) {
@@ -59,10 +62,13 @@
     function frameAt(t) { let best = hist[0]; for (const h of hist) if (Math.abs(h.t - t) < Math.abs(best.t - t)) best = h; return best; }
 
     function finish(tEnd) {
-      const d = dom(), OVER = ['bandeja', 'vibora', 'smash', 'smash_x3', 'bajada', 'serve'];
+      const d = dom();
       if (OVER.includes(o.shot)) { // overheads: contact = highest racket wrist near the speed peak
-        for (const h of hist) if (h.t >= st.peak.t - .25 && h.t <= st.peak.t + .1 && h.kp[d.w][1] < st.peak.kp[d.w][1]) st.peak = { t: h.t, v: st.peak.v, vx: h.vx, kp: h.kp };
+        for (const h of hist) if (h.t >= Math.max(st.tStart, st.peak.t - .25) && h.t <= st.peak.t + .1 && h.kp[d.w][1] < st.peak.kp[d.w][1]) st.peak = { t: h.t, v: st.peak.v, vx: h.vx, kp: h.kp };
       }
+      // no wind-up before the speed peak = the racket coming back down to ready (or a fidget), not a new stroke:
+      // without this every bandeja counted twice (swing + recovery, the second with tempo 0)
+      if (st.peak.t - st.tStart < o.minTempoS) return null;
       const pk = st.peak, kp = pk.kp, pxM = (bodyPx || 1) / (0.88 * o.playerHeightM);
       const ground = Math.max(kp[K.la][1], kp[K.ra][1]);
       const hip = mid(kp[K.lh], kp[K.rh]);
@@ -122,10 +128,10 @@
           st.quietSince = v < o.lo ? (st.quietSince ?? t) : null;
           if ((st.quietSince !== null && t - st.quietSince >= o.quietS) || t - st.tStart > o.maxS) { st.segs.push(st.peak); st.endT = t; state = 'pending'; }
         } else { // pending: a pause (e.g. prep then swing) within mergeS continues the same stroke
-          if (v > o.hi && t - st.endT < o.mergeS && t - st.tStart < o.maxS) { state = 'active'; st.peak = { t, v, vx, kp }; st.quietSince = null; }
-          else if (t - st.endT >= o.mergeS || t - st.tStart > o.maxS) {
+          if (v > o.hi && t - st.endT < mergeS() && t - st.tStart < o.maxS) { state = 'active'; st.peak = { t, v, vx, kp }; st.quietSince = null; }
+          else if (t - st.endT >= mergeS() || t - st.tStart > o.maxS) {
             const mx = Math.max(...st.segs.map(p => p.v)); st.peak = st.segs.filter(p => p.v >= .6 * mx).pop(); // swing = last strong segment
-            const s = finish(st.endT); out.strokes.push(s); out.checks = s.checks; state = 'idle'; lastQuietT = t; st = null;
+            const s = finish(st.endT); if (s) { out.strokes.push(s); out.checks = s.checks; } state = 'idle'; lastQuietT = t; st = null;
           }
         }
         out.metrics = last;

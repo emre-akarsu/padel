@@ -187,14 +187,17 @@ function draw(r, t) {
     octx.lineWidth = s * 1.5; octx.lineCap = 'round';
     for (let i = 1; i < L.trail.length; i++) { octx.globalAlpha = i / L.trail.length; octx.strokeStyle = '#d8ea3a'; octx.beginPath(); octx.moveTo(...L.trail[i - 1]); octx.lineTo(...L.trail[i]); octx.stroke(); }
     octx.globalAlpha = 1;
+    PadelGhost.draw(octx, kp, { width: s * 1.4, alpha: .9 }); // the RTMPose skeleton on your body (was never drawn live)
     const fit = PadelGhost.fitTo(kp); if (fit) { fit.facing = facingOf(kp); L.lastFit = fit; }
   }
   if (L.ghostOn && L.lastFit && L.mode === 'shadow') {
     const spec = PadelGhost.specs.shots[S.shot], period = spec.durationS * 2 + 1; // half speed + 1 s pause
     let u = r.phase && r.phase.progress != null && r.phase.id !== 'ready' ? r.phase.progress : Math.min(1, ((t % period) / (spec.durationS * 2)));
     // beside the player, not on top (overlapping bodies were unreadable): shift towards the emptier side of the frame
-    const f = L.lastFit, dir = f.anchor[0] < ov.width / 2 ? 1 : -1;
-    drawGhost(octx, S.shot, u, { ...f, anchor: [f.anchor[0] + dir * f.scale * 2.6, f.anchor[1]] }, s * 2.4);
+    // keep the whole ghost inside the picture: it was drawn 2.6 torsos away and often fell half off the edge
+    const f = L.lastFit, room = [f.anchor[0], ov.width - f.anchor[0]], dir = room[1] >= room[0] ? 1 : -1, half = f.scale * 1.3;
+    const gx = Math.max(half, Math.min(ov.width - half, f.anchor[0] + dir * f.scale * 2.6));
+    drawGhost(octx, S.shot, u, { ...f, anchor: [gx, f.anchor[1]] }, s * 2.4);
     const sub = $('#sub'); sub.hidden = false; sub.textContent = 'Coach: ' + PadelGhost.labelAt(S.shot, u);
   } else $('#sub').hidden = true;
 }
