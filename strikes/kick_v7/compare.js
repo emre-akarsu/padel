@@ -1,11 +1,11 @@
-// Kick serve v6 vs v7, side by side: one clock, one camera, two scenes (left = v6 before, right = v7 after).
+// Kick serve v6 | v7 authored | v8 authored | v8.1 (2x2): one clock, one camera, four scenes.
 // The body / grips / implements / character come from the published Strike Player layer (../); the solver here is the
 // v7 copy (root motion + CoM, see loco.js), which runs v6 specs unchanged.
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { loadLayer, compileTechnique } from "./solver.js?v=7";
-import { comOf } from "./loco.js?v=7";
+import { loadLayer, compileTechnique } from "./solver.js?v=10";
+import { comOf } from "./loco.js?v=10";
 
 const $ = (id) => document.getElementById(id);
 const stage = $("stage"), status = $("status");
@@ -26,8 +26,8 @@ status.textContent = "Loading the character and solving both serves…";
 const base = "../";
 const { ch, layer } = await loadLayer(async (p) => (await fetch(base + p)).json());
 const sport = await (await fetch("kick.json")).json();
-const T = { v6: sport.techniques.find((t) => t.id === "kick_serve_v6"), v7: sport.techniques.find((t) => t.id === "kick_serve_v7") };
-const glbs = await Promise.all([0, 1].map(() => new GLTFLoader().loadAsync(base + "assets/player.glb")));   // one instance per side
+const KEYS = ["v6", "v7", "v8", "v81"]; const T = Object.fromEntries(KEYS.map((k) => [k, sport.techniques.find((t) => t.id === `kick_serve_${k}`)]));
+const glbs = await Promise.all(KEYS.map(() => new GLTFLoader().loadAsync(base + "assets/player.glb")));   // one instance per panel
 const racketGlb = await new GLTFLoader().loadAsync(base + layer.implements.tennis_racket.model.replace(/^\.\.\//, ""));
 const glowTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const g = c.getContext("2d");
   const r = g.createRadialGradient(32, 32, 0, 32, 32, 32); r.addColorStop(0, "rgba(255,255,255,1)"); r.addColorStop(0.25, "rgba(255,240,200,.85)"); r.addColorStop(1, "rgba(255,200,120,0)");
@@ -67,7 +67,7 @@ function makeSide(key, color) {
   key_.shadow.mapSize.set(2048, 2048); Object.assign(key_.shadow.camera, { left: -3, right: 3, top: 3, bottom: -3, near: 1, far: 15 }); key_.shadow.bias = -0.0004;
   scene.add(key_); const rim = new THREE.DirectionalLight(0xcfe0ff, 1.0); rim.position.set(2, 3, -4); scene.add(rim);
   court(scene);
-  const body = glbs[key === "v6" ? 0 : 1].scene;
+  const body = glbs[KEYS.indexOf(key)].scene;
   scene.add(body);
   const bones = {}; body.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.frustumCulled = false; } if (o.isBone) bones[o.name] = o; });
   const boneOf = (n) => bones[n] || bones[THREE.PropertyBinding.sanitizeNodeName(n)];
@@ -117,10 +117,10 @@ function makeSide(key, color) {
   }
   return { key, scene, comp, show, color };
 }
-const L = makeSide("v6"), R = makeSide("v7");
+const SIDES = KEYS.map((k) => makeSide(k));
 status.remove();
 // ---------------------------------------------------------------- clock: motion time tau, slow motion around contact
-const tEnd = Math.max(L.comp.t1, R.comp.t1) + 0.25;
+const tEnd = Math.max(...SIDES.map((s) => s.comp.t1)) + 0.25;
 const st = { tau: 0, playing: !capture, rate: 0.25, speed: 1, fx: { trail: true, com: true } };
 const sm = (x) => { x = Math.min(1, Math.max(0, x)); return x * x * x * (x * (6 * x - 15) + 10); };
 const tA = 0.98, tB = 1.36, ramp = 0.16;
@@ -136,10 +136,10 @@ setView("side");
 function draw() {
   const r = stage.getBoundingClientRect(), W = Math.round(r.width), H = Math.round(r.height);
   const sz = renderer.getSize(new THREE.Vector2()); if (sz.x !== W || sz.y !== H) renderer.setSize(W, H, false);
-  camera.aspect = (W / 2) / H; camera.updateProjectionMatrix();
-  const pl = L.show(st.tau, st.fx), pr = R.show(st.tau, st.fx);
-  for (const [side, x] of [[L, 0], [R, W / 2]]) { renderer.setViewport(x, 0, W / 2, H); renderer.setScissor(x, 0, W / 2, H); renderer.render(side.scene, camera); }
-  $("cueL").textContent = `${pl.label || pl.name}: ${pl.cue}`; $("cueR").textContent = `${pr.label || pr.name}: ${pr.cue}`;
+  camera.aspect = W / H; camera.updateProjectionMatrix();
+  const cues = SIDES.map((sd) => sd.show(st.tau, st.fx));
+  SIDES.forEach((sd, i) => { const x = (i % 2) * W / 2, y = (i < 2 ? 1 : 0) * H / 2; renderer.setViewport(x, y, W / 2, H / 2); renderer.setScissor(x, y, W / 2, H / 2); renderer.render(sd.scene, camera); });
+  cues.forEach((c, i) => { const e = $(`cue${i}`); if (e) e.textContent = `${c.label || c.name}: ${c.cue}`; });
   const sp = speedAt(st.tau); $("slowtag").hidden = sp > 0.95; $("slowtag").textContent = `SLOW MOTION ${sp.toFixed(2).replace(/^0/, "")}×`;
   $("clock").textContent = `${(st.tau - 1.16 >= 0 ? "+" : "")}${(st.tau - 1.16).toFixed(2)} s from contact`;
   scrub.value = st.tau / tEnd;

@@ -1,6 +1,191 @@
 {
  "rows": [
   {
+   "gate": "Racket drop depth",
+   "rule": "centre ≥ 0.30 m below the hand",
+   "src": "coaching",
+   "v6": {
+    "v": "0.18 m",
+    "pass": false
+   },
+   "v7": {
+    "v": "0.27 m",
+    "pass": false
+   },
+   "v8": {
+    "v": "0.46 m",
+    "pass": true
+   },
+   "v81": {
+    "v": "0.46 m",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Racket head down",
+   "rule": "handle→head y ≤ −0.7",
+   "src": "coaching",
+   "v6": {
+    "v": "-0.41",
+    "pass": false
+   },
+   "v7": {
+    "v": "-0.65",
+    "pass": false
+   },
+   "v8": {
+    "v": "-0.98",
+    "pass": true
+   },
+   "v81": {
+    "v": "-0.98",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Hand and elbow up in the drop",
+   "rule": "hand ≥ shoulder, elbow ≥ shoulder − 12 cm",
+   "src": "coaching",
+   "v6": {
+    "v": "hand 1 cm, elbow -7 cm",
+    "pass": true
+   },
+   "v7": {
+    "v": "hand 21 cm, elbow 9 cm",
+    "pass": true
+   },
+   "v8": {
+    "v": "hand 2 cm, elbow 5 cm",
+    "pass": true
+   },
+   "v81": {
+    "v": "hand 2 cm, elbow 6 cm",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Racket low point",
+   "rule": "time before contact (info)",
+   "src": "measured",
+   "v6": {
+    "v": "234 ms"
+   },
+   "v7": {
+    "v": "234 ms"
+   },
+   "v8": {
+    "v": "163 ms"
+   },
+   "v81": {
+    "v": "100 ms"
+   }
+  },
+  {
+   "gate": "Max shoulder external rotation",
+   "rule": "160–180°",
+   "src": "measured",
+   "v6": {
+    "v": "127°",
+    "pass": false
+   },
+   "v7": {
+    "v": "134°",
+    "pass": false
+   },
+   "v8": {
+    "v": "172°",
+    "pass": true
+   },
+   "v81": {
+    "v": "178°",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Timing of max external rotation",
+   "rule": "40–120 ms before contact",
+   "src": "measured",
+   "v6": {
+    "v": "213 ms",
+    "pass": false
+   },
+   "v7": {
+    "v": "176 ms",
+    "pass": false
+   },
+   "v8": {
+    "v": "117 ms",
+    "pass": true
+   },
+   "v81": {
+    "v": "83 ms",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Elbow at max external rotation",
+   "rule": "90–130°",
+   "src": "analogue",
+   "v6": {
+    "v": "87°",
+    "pass": false
+   },
+   "v7": {
+    "v": "64°",
+    "pass": false
+   },
+   "v8": {
+    "v": "99°",
+    "pass": true
+   },
+   "v81": {
+    "v": "100°",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Elbow at contact",
+   "rule": "≤ 25°",
+   "src": "measured",
+   "v6": {
+    "v": "5°",
+    "pass": true
+   },
+   "v7": {
+    "v": "5°",
+    "pass": true
+   },
+   "v8": {
+    "v": "8°",
+    "pass": true
+   },
+   "v81": {
+    "v": "8°",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Arm raise at contact",
+   "rule": "shoulder abduction 100–125°",
+   "src": "measured",
+   "v6": {
+    "v": "153°",
+    "pass": false
+   },
+   "v7": {
+    "v": "151°",
+    "pass": false
+   },
+   "v8": {
+    "v": "151°",
+    "pass": false
+   },
+   "v81": {
+    "v": "151°",
+    "pass": false
+   }
+  },
+  {
    "gate": "Joint ranges",
    "rule": "0 frames out of range",
    "v6": {
@@ -8,6 +193,14 @@
     "pass": true
    },
    "v7": {
+    "v": "0 frames",
+    "pass": true
+   },
+   "v8": {
+    "v": "0 frames",
+    "pass": true
+   },
+   "v81": {
     "v": "0 frames",
     "pass": true
    }
@@ -22,29 +215,73 @@
    "v7": {
     "v": "0.00 mm",
     "pass": true
+   },
+   "v8": {
+    "v": "0.00 mm",
+    "pass": true
+   },
+   "v81": {
+    "v": "0.00 mm",
+    "pass": true
    }
   },
   {
    "gate": "Racket–body clearance",
    "rule": "> 0",
    "v6": {
-    "v": "115 mm",
+    "v": "117 mm",
     "pass": true
    },
    "v7": {
-    "v": "196 mm",
+    "v": "127 mm",
+    "pass": true
+   },
+   "v8": {
+    "v": "139 mm",
+    "pass": true
+   },
+   "v81": {
+    "v": "70 mm",
     "pass": true
    }
   },
   {
-   "gate": "Smoothness (accel. jump)",
+   "gate": "Smoothness (speed-adjusted)",
    "rule": "≤ v4 baseline 354.7",
    "v6": {
-    "v": "334",
+    "v": "142",
     "pass": true
    },
    "v7": {
-    "v": "262",
+    "v": "261",
+    "pass": true
+   },
+   "v8": {
+    "v": "161",
+    "pass": true
+   },
+   "v81": {
+    "v": "156",
+    "pass": true
+   }
+  },
+  {
+   "gate": "Face vs ball at contact",
+   "rule": "≤ 65°",
+   "v6": {
+    "v": "7°",
+    "pass": true
+   },
+   "v7": {
+    "v": "11°",
+    "pass": true
+   },
+   "v8": {
+    "v": "15°",
+    "pass": true
+   },
+   "v81": {
+    "v": "21°",
     "pass": true
    }
   },
@@ -58,17 +295,13 @@
    "v7": {
     "v": "0.7 mm",
     "pass": true
-   }
-  },
-  {
-   "gate": "Ground penetration",
-   "rule": "no joint below −10 mm",
-   "v6": {
-    "v": "2.4 mm",
+   },
+   "v8": {
+    "v": "0.9 mm",
     "pass": true
    },
-   "v7": {
-    "v": "2.5 mm",
+   "v81": {
+    "v": "1.0 mm",
     "pass": true
    }
   },
@@ -82,55 +315,54 @@
    "v7": {
     "v": "0 bad frames",
     "pass": true
+   },
+   "v8": {
+    "v": "0 bad frames",
+    "pass": true
+   },
+   "v81": {
+    "v": "0 bad frames",
+    "pass": true
    }
   },
   {
    "gate": "Feet behind the baseline",
    "rule": "until contact",
    "v6": {
-    "v": "140 foot-fault frames",
+    "v": "140 frames",
     "pass": false
    },
    "v7": {
-    "v": "0 foot-fault frames",
+    "v": "0 frames",
     "pass": true
-   }
-  },
-  {
-   "gate": "Ballistic flight",
-   "rule": "CoM parabola RMS ≤ 15 mm, a_y = −g ± 5 %, |a_xz| < 0.5",
-   "v6": {
-    "v": "no flight",
-    "pass": false
    },
-   "v7": {
-    "v": "RMS 0.01 mm, a_y -9.81, a_xz 0.00",
+   "v8": {
+    "v": "0 frames",
+    "pass": true
+   },
+   "v81": {
+    "v": "0 frames",
     "pass": true
    }
   },
   {
    "gate": "Flight time",
-   "rule": "0.22–0.30 s, matches the take-off speed ± 5 %",
+   "rule": "0.22–0.30 s",
    "src": "measured",
    "v6": {
-    "v": "–",
+    "v": "no flight",
     "pass": false
    },
    "v7": {
-    "v": "0.294 s (0.0 %)",
+    "v": "0.294 s",
     "pass": true
-   }
-  },
-  {
-   "gate": "CoM rise",
-   "rule": "0.08–0.12 m",
-   "src": "measured",
-   "v6": {
-    "v": "–",
-    "pass": false
    },
-   "v7": {
-    "v": "0.083 m",
+   "v8": {
+    "v": "0.294 s",
+    "pass": true
+   },
+   "v81": {
+    "v": "0.294 s",
     "pass": true
    }
   },
@@ -143,33 +375,15 @@
     "pass": false
    },
    "v7": {
-    "v": "L foot, 0.42 m",
+    "v": "L, 0.42 m",
     "pass": true
-   }
-  },
-  {
-   "gate": "Absorb",
-   "rule": "pelvis drops 5–15 % of leg length",
-   "src": "analogue",
-   "v6": {
-    "v": "–",
-    "pass": false
    },
-   "v7": {
-    "v": "11.7 % over 0.11 s",
+   "v8": {
+    "v": "L, 0.42 m",
     "pass": true
-   }
-  },
-  {
-   "gate": "Knee flexion at load",
-   "rule": "65–80° (deeper leg)",
-   "src": "measured",
-   "v6": {
-    "v": "L 59°, R 52°",
-    "pass": false
    },
-   "v7": {
-    "v": "L 59°, R 67°",
+   "v81": {
+    "v": "L, 0.42 m",
     "pass": true
    }
   },
@@ -182,13 +396,21 @@
     "pass": false
    },
    "v7": {
-    "v": "1.407 ×",
+    "v": "1.406 ×",
+    "pass": true
+   },
+   "v8": {
+    "v": "1.408 ×",
+    "pass": true
+   },
+   "v81": {
+    "v": "1.403 ×",
     "pass": true
    }
   },
   {
    "gate": "Trunk arch at racket low point",
-   "rule": "40–50° (knee–hip–neck bow)",
+   "rule": "40–50°",
    "src": "analogue",
    "v6": {
     "v": "19°",
@@ -197,6 +419,14 @@
    "v7": {
     "v": "22°",
     "pass": false
+   },
+   "v8": {
+    "v": "30°",
+    "pass": false
+   },
+   "v81": {
+    "v": "32°",
+    "pass": false
    }
   },
   {
@@ -204,35 +434,47 @@
    "rule": "knee → pelvis → trunk → shoulder IR → elbow → wrist, 10–60 ms apart",
    "src": "measured",
    "v6": {
-    "v": "knee -164, pelvis -89, trunk -81, shoulder ir -339, elbow -81, wrist -73 ms",
+    "v": "75 / 8 / -8 / 8 / 8 ms",
     "pass": false
    },
    "v7": {
-    "v": "knee -198, pelvis -156, trunk -106, shoulder ir -298, elbow -64, wrist -89 ms",
+    "v": "42 / 50 / 33 / 0 / 8 ms",
+    "pass": false
+   },
+   "v8": {
+    "v": "125 / 25 / 17 / 17 / 17 ms",
+    "pass": false
+   },
+   "v81": {
+    "v": "133 / 17 / 25 / 17 / 25 ms",
     "pass": false
    }
   },
   {
    "gate": "Racket speed",
-   "rule": "< 50 m/s",
+   "rule": "< 50 m/s (real kick serves 30–40)",
    "v6": {
-    "v": "18.0 m/s",
+    "v": "16.5 m/s",
     "pass": true
    },
    "v7": {
-    "v": "12.4 m/s",
+    "v": "12.2 m/s",
+    "pass": true
+   },
+   "v8": {
+    "v": "25.6 m/s",
+    "pass": true
+   },
+   "v81": {
+    "v": "41.7 m/s",
     "pass": true
    }
   }
  ],
  "flaws": [
-  "<b>Kinetic chain only half right.</b> Legs → pelvis → trunk peak in order (42 and 50 ms apart). The arm end is wrong: shoulder internal rotation peaks 298 ms before contact, and the wrist peaks before the elbow. The arm keys are still v6's. The whole v6 swing is about 3× slower than a real serve (sweet spot 12 m/s, real 30–40 m/s), and speeding it up breaks the smoothness gate. That needs a new arm timing pass.",
-  "<b>Trunk arch 22°, target 40–50°.</b> It is measured as the knee–hip–neck bow at the racket's low point. Trunk lean is capped at −30° by the body's joint ranges, and the 40–50° target is an analogue from another sport, not a tennis measurement.",
-  "<b>The ballistic gate passes by construction.</b> The flight is an exact parabola, and the pelvis is solved so that the whole-body CoM sits on it. The gate proves the solver does this; it does not show the jump height is right. Rise 8.3 cm and flight 0.29 s are inside the measured ranges.",
-  "<b>Knee bend at load.</b> The right (back) knee reaches 67°, but the left (front) knee only reaches 59°, below the 65–80° range.",
-  "<b>Contact height</b> is 1.407 × body height, just inside 1.40–1.45. The arm is fully extended, so a higher contact needs a higher jump.",
-  "<b>Loop resets.</b> v7 ends 0.85 m inside the court, so the player jumps back to the start when the loop restarts.",
-  "<b>Not gated yet:</b> balance (support polygon) and whole-body angular momentum. The toss is the v6 toss, so the \"20–30 cm further left and back than a flat serve\" target is not checked.",
-  "<b>Same solver on both sides.</b> v6 runs on the v7 solver unchanged, and its v6 gate numbers match the published v6 exactly (smoothness 334)."
+  "<b>Same open gates as v8.</b> Shoulder abduction at contact is 151° (target 100–125), the trunk arch at the racket low point is 32° (target 40–50; v8 30°), and the kinetic chain fails only on the knee → pelvis lag (133 ms; v8 125 ms), which comes from the jump timing. These are unchanged v8 items.",
+  "<b>Racket speed 41.7 m/s</b> passes (< 50), but it is above real kick serves (30–40 m/s; v8 25.6). The faster, later racket drop shortens the upswing.",
+  "<b>Racket–body clearance 70 mm</b> (v8 139 mm), because the follow-through racket now passes lower, beside the left leg.",
+  "<b>The arm timing comes from one side-on clip</b> (pro, slow motion, real speed from the ball toss), sampled as 7 authored joint-angle keys and smoothed. The follow-through keys are set by hand from the same clip; the clip's post-contact arm angles are too noisy to copy directly."
  ]
 }

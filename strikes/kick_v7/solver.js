@@ -231,7 +231,7 @@ export function armFromAngles(ch, side, Dchest, J) {
   const tw = J.pron * sg;                        // pronation = twist about +Y on the right, -Y on the left
   return { upper: Du, fore: qmul(El, qaxis([0, 1, 0], tw * ch.pronK)), hand: qmul(qmul(El, qaxis([0, 1, 0], tw)), wristSwing(hd, J.wflex, J.wdev)) };
 }
-function anglesFromSegments(ch, side, Dchest, Du, elbow, Dhand) {
+export function anglesFromSegments(ch, side, Dchest, Du, elbow, Dhand) {
   const S = side.toUpperCase(), hd = ch.hand[S], sg = S === "R" ? 1 : -1;
   const F0 = qmul(Du, qaxis([1, 0, 0], -elbow));
   const rel = qmul(qinv(F0), Dhand);
@@ -521,7 +521,7 @@ export function optimizeArm(ch, side, Dchest, shoulderPos, target, init, grip, e
   let bestR = null; for (const st of starts) { const r = local(st); if (!bestR || r.best < bestR.best) bestR = r; }
   return { J: bestR.J, cost: bestR.best, wrist: evalJ(bestR.J).wrist };
 }
-function anglesToParams(ch, side, J) {             // analytic-IK seed -> optimiser parameters
+export function anglesToParams(ch, side, J) {             // analytic-IK seed -> optimiser parameters
   const sm = shoulderMeasures(side, J.shoulder); const h = qrot(J.shoulder, [0, -1, 0]); const sx = side === "r" ? -1 : 1;
   return { az: Math.atan2(h[2], h[0] * sx) * DEG, el: Math.acos(Math.max(-1, Math.min(1, -h[1]))) * DEG, rot: sm.rot, elbow: J.elbow, pron: J.pron, wflex: J.wflex, wdev: J.wdev };
 }
@@ -561,6 +561,7 @@ export function solveKey(ch, p, grip, opts = {}, prev = null) {
     const s2 = solveArm(ch, "l", D.chest, shL, la.hand, null, norm(la.pole), pref);
     lOpt = optimizeArm(ch, "l", D.chest, shL, { wrist: la.hand, pole: norm(la.pole), pref, contW: 1.0, prior: 1 }, anglesToParams(ch, "l", s2.J), null, {}, prev ? prev.arms.l : null);
   }
+  if (p.r_pins) for (const k in p.r_pins) rOpt.J[k] = p.r_pins[k];   // joint-angle keys (e.g. racket drop: rot 170, elbow 100)
   return { trunk: { pelvis: p.pelvis, yaw: p.yaw, lean: p.lean, chest_yaw: p.chest_yaw, chest_roll: p.chest_roll || 0, head_pitch: p.head_pitch, head_yaw: p.head_yaw || 0 },
            arms: { r: rOpt.J, l: lOpt.J }, diag: { r: { cost: rOpt.cost, seed }, l: { cost: lOpt.cost } } };
 }
@@ -654,6 +655,15 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
     Tk.splice(i, 0, tv); K.splice(i, 0, { trunk: { ...st.trunk }, arms: { r: o.J, l: st.arms.l }, diag: { via: true } });
     FT.splice(i, 0, { r: st.feet.r, l: st.feet.l, th: st.twoHand });
     at = build();
+  }
+  if (tech.micro) at = microLayer(at, tech.micro, tc, T[0], T[T.length - 1]);
+  for (const Dn of tech.dense ? [].concat(tech.dense) : []) {   // v7x: dense right-arm joint keys from video (one or more windows), blended in over Dn.ramp s
+    const dsp = {}; for (const k of PK) dsp[k] = clampedSpline(Dn.t, Dn.r[k]);
+    const a0 = Dn.t[0], a1 = Dn.t[Dn.t.length - 1], rp = Dn.ramp ?? 0.06, base = at;
+    at = (t) => { const st = base(t); if (t <= a0 || t >= a1) return st;
+      const w = smooth(Math.min((t - a0) / rp, (a1 - t) / rp, 1));
+      for (const k of PK) st.arms.r[k] = soft((1 - w) * st.arms.r[k] + w * dsp[k](t), bd[k][0], bd[k][1], 6);
+      return st; };
   }
   let solve = (t) => poseFromState(ch, at(t), grip); let bakeOut = null;
   if (grip.L) {   // two-handed = closed chain: both arms solved TOGETHER at dense keys (1/30 s) by box-projected
@@ -792,6 +802,44 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
   const tr0 = T[Math.max(0, ph.findIndex((p) => p.name === (tech.trail?.from || ph[1].name)))], tr1 = T[ph.findIndex((p) => p.name === (tech.trail?.to || ph[ph.length - 2].name))];
   const trail = []; for (let t = tr0; t <= tr1 + 1e-9; t += 1 / 240) trail.push([t, solve(t).racket.center]);
   return { id: tech.id, T, t0: T[0], t1: T[T.length - 1], tc, speed, solve, at: grip.L ? ((t) => { const r = solve(t); return { ...at(t), twoHand: at(t).twoHand }; }) : at, ballAt, ballIn, ballOut, contact: C, tIn0, tOut1, trail, phases: ph, tA, tB, grip, keys, rk, bake: bakeOut, loco: LOCO };
+}
+
+// ------------------------------------------------------------------ micro-motion layer (v7m)
+// Optional per technique (tech.micro). Works on the joint-space state, so every downstream constraint (grip, IK
+// feet, CoM) still applies. Parts:
+//   warp   overlapping action: each arm group samples its own spline through a monotone time warp that keeps the
+//          window ends and contact fixed and moves that group's speed peak from tOld to tNew (proximal first,
+//          distal last). groups: shoulder = az, el, rot; elbow = elbow; wrist = wflex, wdev, pron
+//   layback  wrist extension bump (deg) that lags the forearm into the drop and releases into contact
+//   sway   small breathing / balance sway in the ready holds (deg), zero at the loop ends so the loop stays seamless
+const MICRO_GROUPS = { shoulder: ["az", "el", "rot"], elbow: ["elbow"], wrist: ["wflex", "wdev", "pron"] };
+export function microWarp(ta, tOld, tNew, tc, tb, sg = 0.018) {
+  if (!(ta < tOld && tOld < tc && ta < tNew && tNew < tc)) return (t) => t;
+  const X = [ta, tNew, tc, tb], Y = [ta, tOld, tc, tb], n = 3, d = [], m = [1, 0, 0, 1];
+  for (let i = 0; i < n; i++) d.push((Y[i + 1] - Y[i]) / (X[i + 1] - X[i]));
+  for (let i = 1; i < n; i++) { const w1 = 2 * (X[i + 1] - X[i]) + (X[i] - X[i - 1]), w2 = (X[i + 1] - X[i]) + 2 * (X[i] - X[i - 1]); m[i] = (w1 + w2) / (w1 / d[i - 1] + w2 / d[i]); }
+  for (let i = 0; i < n; i++) { const a = m[i] / d[i], b = m[i + 1] / d[i], h = a * a + b * b; if (h > 9) { const s3 = 3 / Math.sqrt(h); m[i] = s3 * a * d[i]; m[i + 1] = s3 * b * d[i]; } }   // Fritsch-Carlson: stays monotone
+  const H = hermite(X, Y, m), raw = (t) => (t <= ta || t >= tb ? t : H(t));
+  // C2: Gaussian-smooth the C1 warp (sigma 18 ms) so no acceleration step appears at the knots; stays monotone
+  const dt = 1 / 960, ts = [], ws = [], KN = Math.ceil(3 * sg / dt);
+  for (let t = ta - 0.08; t <= tb + 0.08 + 1e-9; t += dt) { let a = 0, z = 0; for (let k = -KN; k <= KN; k++) { const e = Math.exp(-0.5 * (k * dt / sg) ** 2); a += e * raw(t + k * dt); z += e; } ts.push(t); ws.push(a / z); }
+  const Sm = clampedSpline(ts, ws), lo = ts[0], hi = ts[ts.length - 1];
+  return (t) => (t <= lo || t >= hi ? t : Sm(t));
+}
+function microLayer(at, M, tc, t0, t1) {
+  const ta = M.window?.[0] ?? tc - 0.4, tb = tc + (M.window?.[1] ?? 0.25);
+  const W = {}; for (const g in MICRO_GROUPS) { const w = M.warp?.[g]; W[g] = w ? microWarp(ta, tc + w[0] / 1000, tc + w[1] / 1000, tc, tb, (M.sigma_ms ?? 18) / 1000) : null; }
+  const bump = (t, c, wd) => { const u = (t - c) / wd; return Math.abs(u) >= 1 ? 0 : (0.5 * (1 + Math.cos(Math.PI * u))) ** 2; };
+  return (t) => {
+    const st = at(t);
+    for (const g in MICRO_GROUPS) { if (!W[g]) continue; const tw = W[g](t); if (tw === t) continue;
+      const src = at(tw).arms.r; for (const k of (M.groups?.[g] || MICRO_GROUPS[g])) st.arms.r[k] = src[k]; }
+    if (M.layback) { const [deg, cms, wms] = M.layback; st.arms.r.wflex -= deg * bump(t, tc + cms / 1000, wms / 1000); }
+    if (M.sway) { const [deg, hold] = M.sway, env = (t < t0 + hold ? Math.sin(Math.PI * (t - t0) / hold) ** 2 : 0) + (t > t1 - hold ? Math.sin(Math.PI * (t1 - t) / hold) ** 2 : 0);
+      if (env > 0) { st.trunk.lean += deg * env * Math.sin(2 * Math.PI * (t - t0) / hold); st.trunk.chest_yaw += 0.6 * deg * env * Math.sin(4 * Math.PI * (t - t0) / hold);
+        st.trunk.head_pitch += 0.5 * deg * env * Math.sin(2 * Math.PI * (t - t0) / hold + 1); } }
+    return st;
+  };
 }
 export function timeTable(comp, fps = 240, globalSpeed = 1, includeReal = false) {
   const rows = []; let t = comp.t0;
