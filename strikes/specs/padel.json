@@ -8855,7 +8855,10 @@
        "yaw": -28,
        "lift": 0
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 30
+      }
      }
     },
     {
@@ -8938,12 +8941,18 @@
        "yaw": -28,
        "lift": 0
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 30
+      }
      }
     }
    ],
    "ar": "ar/padel_serve.usdz",
-   "end": "hold"
+   "end": "hold",
+   "monotone_joints": [
+    "pron"
+   ]
   }
  ]
 }

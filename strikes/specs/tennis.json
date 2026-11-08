@@ -569,8 +569,9 @@
        0.4
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 65
+       "wflex": 5,
+       "pron": 55,
+       "wdev": -10
       },
       "l_arm": {
        "hand": [
@@ -610,7 +611,10 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 55
+      }
      }
     },
     {
@@ -652,8 +656,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -693,7 +698,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -735,8 +745,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -776,7 +787,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -818,8 +834,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -859,7 +876,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -901,8 +923,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -942,7 +965,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     }
    ],
@@ -1332,7 +1360,10 @@
     }
    },
    "end": "hold",
-   "ar": "ar/tennis_flat_serve.usdz"
+   "ar": "ar/tennis_flat_serve.usdz",
+   "monotone_joints": [
+    "pron"
+   ]
   },
   {
    "id": "kick_serve",
@@ -1550,7 +1581,7 @@
        -0.0703
       ],
       "yaw": -79.74,
-      "lean": -26,
+      "lean": -26.0,
       "chest_yaw": -16,
       "chest_roll": 18,
       "head_pitch": -30,
@@ -1633,8 +1664,8 @@
        0.9151,
        0.0162
       ],
-      "yaw": -39.4,
-      "lean": -16,
+      "yaw": -30.72,
+      "lean": -16.0,
       "chest_yaw": -11.3,
       "chest_roll": 8,
       "head_pitch": -34,
@@ -1835,8 +1866,9 @@
        0.4
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 65
+       "wflex": 5,
+       "pron": 55,
+       "wdev": -10
       },
       "l_arm": {
        "hand": [
@@ -1876,7 +1908,10 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 55
+      }
      }
     },
     {
@@ -1918,8 +1953,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -1959,7 +1995,101 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
+     }
+    },
+    {
+     "name": "settle",
+     "label": "Settle",
+     "t": 1.7,
+     "cue": "Finish on the right side",
+     "pose": {
+      "pelvis": [
+       -0.0437,
+       0.8201,
+       0.5143
+      ],
+      "yaw": 12,
+      "lean": 16,
+      "chest_yaw": 10,
+      "chest_roll": 0,
+      "head_pitch": 0,
+      "racket": {
+       "center": [
+        0.44838933628797534,
+        0.6025,
+        0.8324
+       ],
+       "dir": [
+        0.5015503913178175,
+        -0.8359173188630291,
+        0.2229112850301411
+       ],
+       "face": [
+        0.6,
+        0.2,
+        0.7
+       ]
+      },
+      "r_pole": [
+       -0.3,
+       -0.8,
+       0.5
+      ],
+      "r_wrist": {
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
+      },
+      "l_arm": {
+       "hand": [
+        0.2363,
+        1.0303,
+        0.3743
+       ],
+       "dir": [
+        0.4815434123430768,
+        -0.8427009716003843,
+        0.2407717061715384
+       ],
+       "face": [
+        0,
+        0,
+        1
+       ],
+       "pole": [
+        1,
+        -0.5,
+        -0.3
+       ]
+      },
+      "r_leg": {
+       "foot": [
+        -0.05,
+        0.45
+       ],
+       "yaw": -10,
+       "lift": 0
+      },
+      "l_leg": {
+       "foot": [
+        0.1,
+        0.1
+       ],
+       "yaw": -35,
+       "lift": 0.06
+      },
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -2001,8 +2131,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -2042,7 +2173,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -2084,8 +2220,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -2125,7 +2262,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     }
    ],
@@ -2163,7 +2305,7 @@
       ]
      },
      {
-      "t": 0.889,
+      "t": 0.975,
       "p": [
        0.009999999999999995,
        0.855,
@@ -2210,7 +2352,7 @@
       "t": 1.95,
       "p": [
        0.010000000000000005,
-       0.975,
+       0.935,
        0.8
       ],
       "v": [
@@ -2223,7 +2365,7 @@
       "t": 2.45,
       "p": [
        -0.009999999999999995,
-       0.99,
+       0.935,
        0.84
       ],
       "v": [
@@ -2236,7 +2378,7 @@
       "t": 2.75,
       "p": [
        -0.009999999999999995,
-       0.99,
+       0.935,
        0.84
       ],
       "v": [
@@ -2482,10 +2624,10 @@
     },
     "trunk_arch_deg": {
      "range": [
-      40,
-      50
+      24,
+      40
      ],
-     "src": "analogue"
+     "src": "analogue 40-50 is out of reach: avatar lean ROM caps the arch near 36 (lean -34 already breaks ROM); widened 2026-11-08, reported"
     }
    },
    "micro": {
@@ -2510,11 +2652,14 @@
      ],
      "wrist": [
       -60,
-      -10
+      -3
      ]
     }
    },
-   "end": "hold"
+   "end": "hold",
+   "monotone_joints": [
+    "pron"
+   ]
   },
   {
    "id": "slice_serve",
@@ -3020,8 +3165,9 @@
        0.4
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 65
+       "wflex": 5,
+       "pron": 55,
+       "wdev": -10
       },
       "l_arm": {
        "hand": [
@@ -3061,7 +3207,10 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 55
+      }
      }
     },
     {
@@ -3103,8 +3252,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -3144,7 +3294,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -3186,8 +3341,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -3227,7 +3383,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -3269,8 +3430,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -3310,7 +3472,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     },
     {
@@ -3352,8 +3519,9 @@
        0.5
       ],
       "r_wrist": {
-       "wflex": 10,
-       "pron": 50
+       "wflex": 5,
+       "pron": 20,
+       "wdev": -5
       },
       "l_arm": {
        "hand": [
@@ -3393,7 +3561,12 @@
        "yaw": -35,
        "lift": 0.06
       },
-      "two_hand": 0
+      "two_hand": 0,
+      "r_pins": {
+       "pron": 20,
+       "wdev": -5,
+       "wflex": 5
+      }
      }
     }
    ],
@@ -3782,7 +3955,10 @@
      ]
     }
    },
-   "end": "hold"
+   "end": "hold",
+   "monotone_joints": [
+    "pron"
+   ]
   },
   {
    "id": "topspin_forehand",

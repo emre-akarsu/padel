@@ -491,7 +491,7 @@ export function optimizeArm(ch, side, Dchest, shoulderPos, target, init, grip, e
     c += ((J.wflex - (pf.wflex ?? 0)) / 20) ** 2 + ((J.wdev - (pf.wdev ?? 0)) / 20) ** 2 + ((J.pron - (pf.pron ?? 0)) / 40) ** 2;
     if (target.pole) { const mid = add(shoulderPos, mul(sub(wrist, shoulderPos), 0.5)); c += 0.5 * (angOf(sub(elbowPos, mid), target.pole) / 45) ** 2; }
     if (prevJ) for (const k of PK) c += (target.contW ?? 0.15) * ((J[k] - prevJ[k]) / 40) ** 2;   // continuity with the previous key
-    if (target.near) for (const k of PK) c += ((J[k] - target.near[k]) / 8) ** 2;              // stay near the interpolated joints
+    if (target.near) for (const k of PK) c += ((J[k] - target.near[k]) / (target.nearScale?.[k] ?? 8)) ** 2;   // stay near the interpolated joints (v11: per-joint scale)
     if (target.accel) for (const k of PK) c += ((J[k] - target.accel[k]) / (target.accelScale ?? 3)) ** 2;             // smooth: stay near the constant-velocity prediction
     if (target.prior) c += target.prior * (((J.rot - 20) / 50) ** 2 + (Math.max(0, 30 - J.elbow) / 25) ** 2 + (Math.max(0, J.elbow - 120) / 25) ** 2);
     for (const k of ["rot", "pron", "wflex", "wdev"]) { const [lo, hi] = bd[k], m = 0.12 * (hi - lo); c += 0.02 * (Math.max(0, J[k] - (hi - m)) ** 2 + Math.max(0, lo + m - J[k]) ** 2); }
@@ -633,7 +633,11 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
   const build = () => {
     const tf = {}; for (const k of ["yaw", "lean", "chest_yaw", "chest_roll", "head_pitch", "head_yaw"]) tf[k] = clampedSpline(Tk, K.map((Q) => Q.trunk[k]));
     const pf = [0, 1, 2].map((c) => clampedSpline(Tk, K.map((Q) => Q.trunk.pelvis[c])));
-    const af = {}; for (const s of ["r", "l"]) { af[s] = {}; for (const k of PK) af[s][k] = clampedSpline(Tk, K.map((Q) => Q.arms[s][k])); }
+    // v11 (2026-11-08): joints listed in tech.monotone_joints (e.g. ["pron"]) use monotone PCHIP between keys: a C2 spline
+    // rings after a fast swing (pron -78 -> +45 in 0.16 s), giving the forearm a back-and-forth twist in the finish.
+    const MJ = new Set(tech.monotone_joints || []);
+    const af = {}; for (const s of ["r", "l"]) { af[s] = {}; for (const k of PK) { const ys = K.map((Q) => Q.arms[s][k]), sp = clampedSpline(Tk, ys);
+      if (s === "r" && MJ.has(k)) { const pc = pchip(Tk, ys); af[s][k] = (t) => (t < tc ? sp(t) : pc(t)); } else af[s][k] = sp; } }   // monotone only after contact
     const ff = {}; for (const s of ["r", "l"]) { const g = (fn) => pchip(Tk, FT.map((q) => fn(q[s])));
       ff[s] = { x: g((l) => l.foot[0]), z: g((l) => l.foot[1]), yaw: g((l) => l.yaw ?? 0), lift: g((l) => l.lift || 0) }; }
     const th = pchip(Tk, FT.map((q) => q.th));
