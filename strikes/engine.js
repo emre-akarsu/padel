@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { loadLayer, compileTechnique, timeTable } from "./solver.js?v=12";
+import { loadLayer, compileTechnique, timeTable } from "./solver.js?v=13";
 
 const $ = (id) => document.getElementById(id);
 const stage = $("stage");

@@ -162,6 +162,7 @@ function fingerWrap(ch, S, G, g, rk) {
       if (e < best[0]) { best = [e, a + da, b + db, c + dc]; [, a, b, c] = best; }
     }
     [a, b, c].forEach((ang, j) => { curls[ch.N(`${S} ${names[j]}`)] = qaxis(ax, ang); });
+    (curls._fing ||= {})[f] = { names, ax, tip, abc: [a, b, c], palmW };
   }
   // thumb: opposes across the front of the handle (2 DOF at the base, flexion of the two distal joints)
   const tn = ["Finger0", "Finger01", "Finger02"];
@@ -176,6 +177,42 @@ function fingerWrap(ch, S, G, g, rk) {
   const [, o, fl, tb, tc] = bt;
   curls[ch.N(`${S} Finger0`)] = qmul(qaxis(axisD, o * (S === "R" ? 1 : -1)), qaxis(tax, fl)); curls[ch.N(`${S} Finger01`)] = qaxis(tax, tb); curls[ch.N(`${S} Finger02`)] = qaxis(tax, tc);
   return curls;
+}
+// v13 (2026-11-09): the loose second hand tilts/rolls on the handle (loose_deg), so the socket finger wrap no longer
+// matches the handle; re-rest each finger on the actual handle (local refine from the socket wrap, nothing else moves)
+const REWRAP = new Map();
+function rewrapFingers(ch, S, base, axisPW, axisDW, rk) {
+  const R = rk.handleR + 0.0085, out = { ...base };
+  const distAxis = (p) => { const v = sub(p, axisPW); return len(sub(v, mul(axisDW, dot(v, axisDW)))); };
+  const chainFK = (names, rots, tipLen) => {
+    let q = QI; const pts = []; let p = ch.H(`${S} ${names[0]}`);
+    for (let i = 0; i < names.length; i++) {
+      q = qmul(q, rots[i]); const next = i + 1 < names.length ? ch.H(`${S} ${names[i + 1]}`) : add(ch.H(`${S} ${names[i]}`), mul(norm(sub(ch.H(`${S} ${names[i]}`), ch.H(`${S} ${names[i - 1]}`))), tipLen));
+      const off = sub(next, ch.H(`${S} ${names[i]}`)); const np = add(p, qrot(q, off)); pts.push(mul(add(p, np), 0.5), np); p = np;
+    }
+    return pts;
+  };
+  const err = (pts) => pts.reduce((s, p) => { const d = distAxis(p) - R; return s + d * d + (d < -0.0005 ? 4000 * (d + 0.0005) ** 2 : 0) + (d > 0.004 ? 4000 * (d - 0.004) ** 2 : 0); }, 0);
+  for (const f of ["1", "2", "3", "4"]) {
+    const F = base._fing[f]; let [a, b, c] = F.abc, sp = 0; const ax = F.ax, pw = norm(F.palmW);
+    const rots = (a, b, c, sp) => [qmul(qaxis(pw, sp), qaxis(ax, a)), qaxis(ax, b), qaxis(ax, c)];
+    const E = (a, b, c, sp) => err(chainFK(F.names, rots(a, b, c, sp), F.tip)) + 1e-7 * (a * a + b * b + c * c + 4 * sp * sp);
+    const pen = (a, b, c, sp) => Math.min(...chainFK(F.names, rots(a, b, c, sp), F.tip).map((p) => distAxis(p) - R));
+    const gap = (a, b, c, sp) => Math.max(...chainFK(F.names, rots(a, b, c, sp), F.tip).map((p) => distAxis(p) - R));
+    const refine = () => { let best = E(a, b, c, sp);
+      for (const st of [8, 4, 2, 1]) for (let it = 0; it < 5; it++) { let moved = false;
+        for (const [da, db, dc, ds] of [[st, 0, 0, 0], [-st, 0, 0, 0], [0, st, 0, 0], [0, -st, 0, 0], [0, 0, st, 0], [0, 0, -st, 0], [0, 0, 0, st], [0, 0, 0, -st]]) {
+          const na = Math.max(-40, Math.min(110, a + da)), nb = Math.max(0, Math.min(115, b + db)), nc = Math.max(0, Math.min(90, c + dc)), ns = Math.max(-30, Math.min(30, sp + ds));
+          const e = E(na, nb, nc, ns); if (e < best) { best = e; a = na; b = nb; c = nc; sp = ns; moved = true; } }
+        if (!moved) break; } };
+    refine(); let r1 = [E(a, b, c, sp), a, b, c, sp];
+    if (pen(a, b, c, sp) < -0.0015 || gap(a, b, c, sp) > 0.0055) {   // stuck on the wrong side: second start with the finger splayed
+      for (const s0 of [[...F.abc, -25], [...F.abc, 25], [10, 15, 30, -25], [40, 40, 30, -15]]) { [a, b, c, sp] = s0; refine(); const e = E(a, b, c, sp); if (e < r1[0]) r1 = [e, a, b, c, sp]; }
+      [, a, b, c, sp] = r1;
+    }
+    rots(a, b, c, sp).forEach((q, j) => { out[ch.N(`${S} ${F.names[j]}`)] = q; });
+  }
+  return out;
 }
 // relaxed free hand (light curl)
 function relaxedCurls(ch, S) {
@@ -403,6 +440,14 @@ export function poseCore(ch, st, grip) {
     racket = racketAt(D.r_hand, pos[ch.N("R Hand")]);
     const fistNow = add(pos[ch.N("L Hand")], qrot(D.l_hand, grip.L.fistL));
     const aa = Math.max(rk.fist + grip.slide[0], Math.min(rk.fist + grip.slide[1], dot(sub(fistNow, racket.origin), racket.dir)));
+    if (grip.loose > 0 && grip.curlsL && grip.curlsL._fing) {   // v13: re-rest the loose second hand's fingers on the handle
+      const Dh = delta[ch.N("L Hand")], ph = pos[ch.N("L Hand")], h = ch.H("L Hand");
+      const toRest = (p) => add(h, qrot(qinv(Dh), sub(p, ph)));   // world -> rest frame of the left hand
+      const aP = toRest(racket.origin), aD = norm(sub(toRest(add(racket.origin, racket.dir)), aP));
+      const key = [...aP, ...aD].map((v) => Math.round(v * 2e4)).join(",");   // the result depends only on the hand-relative handle axis
+      let cL = REWRAP.get(key); if (!cL || cL._base !== grip.curlsL) { cL = rewrapFingers(ch, "L", grip.curlsL, aP, aD, rk); cL._base = grip.curlsL; if (REWRAP.size > 20000) REWRAP.clear(); REWRAP.set(key, cL); }
+      Object.assign(curls, cL); ({ delta, pos } = fk(ch, D, pel, curls));
+    }
     info.leftGrip = { fistTarget: add(racket.origin, mul(racket.dir, aa)), fist: fistNow, roll: Math.acos(Math.max(-1, Math.min(1, dot(qrot(D.l_hand, qrot(grip.L.G, [0, 0, 1])), racket.normal)))) * DEG };
   }
   return { delta, pos, racket, pelvis: pel, D, info, arms: st.arms };
