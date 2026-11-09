@@ -127,3 +127,9 @@ The wrist-height band for each shot (`release.json` → `contact_low`, `relHeigh
 ## Smoke test (2026-11-07)
 14 tests run in parallel in headless Chromium with the real RTMPose-s engine (WASM) and a padel clip as the camera: home, shadow, ball machine, gadget, wall, lesson, drill sets, practice link, review a video, summary chat, inbox export, ideal swings library, Strike Player page, feasibility page. 14 of 14 pass. Not yet run on a real phone.
 New: voice question in live (🎤, browser speech recognition, no AI): "show me the last one", "replay 2", "how was that?". Chat filters: low, high, slow, fast, on target.
+
+## Step-by-step Swing Guide (POC)
+
+`guide.html` (live: https://emre-akarsu.github.io/padel/ar-coach/guide.html). Pick a padel stroke; the page walks you through its stages one position at a time (the ghost `keys` from `techniques.json`). For each step: the ideal avatar pose is shown beside you, you move into it and hold still for 1.2 s (or tap "Capture now"; it captures anyway after 14 s), then that step's checks appear: hitting/free elbow bend, knee bend, upper-body lean, racket-hand height and how far in front of the hips, each as your value vs target band, PASS/FAIL/n/a and a plain-language fix. A summary and JSON export come at the end. Pose = the same on-device RTMPose-s engine (`engine/onnx.js` + `engine/core.js`).
+
+Targets are measured on the ideal avatar frame with the same 2D side-view code used for you (like for like), ± a tolerance; where the v3 spec (`guide_spec.json`, extracted from `knowledge/ideal_strokes/v3` padel `*.ranges.json`, realtime rows) has a coaching range, the band is widened to it. **Not coach-validated.** `?shot=<id>` preselects a stroke.

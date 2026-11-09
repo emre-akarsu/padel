@@ -1,0 +1,287 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Step-by-step Swing Guide</title>
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<style>
+:root{--bg:#0e1116;--panel:#171b22;--ink:#e8ecf2;--mute:#9aa4b2;--line:#2a313c;--ok:#3fb950;--bad:#f85149;--warn:#d29922;--acc:#58a6ff;--you:#ff9f43;--ideal:#ffffff}
+*{box-sizing:border-box}html,body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--line)}
+header h1{font-size:17px;margin:0;flex:1}header a{color:var(--acc);text-decoration:none;font-size:14px}
+main{max-width:1100px;margin:0 auto;padding:12px 16px 40px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+label{font-size:13px;color:var(--mute)}select,button{font:inherit;color:var(--ink);background:#222a35;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+button.pri{background:var(--acc);color:#04111f;border-color:var(--acc);font-weight:600}button:disabled{opacity:.5}
+.note{font-size:12.5px;color:var(--mute)}.honest{border-left:3px solid var(--warn);padding:6px 10px;margin:10px 0;font-size:13px;color:#e3c47a;background:#2a2312;border-radius:4px}
+#live{display:grid;grid-template-columns:1fr 260px;gap:12px;margin-top:12px}
+@media (max-width:760px){#live{grid-template-columns:1fr}#result.on{position:fixed;z-index:5}}
+#stage{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3}
+#stage video,#stage #ov{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
+#stage.mirror video,#stage.mirror #ov{transform:scaleX(-1)}
+#hud{position:absolute;left:0;right:0;top:0;padding:8px 10px;background:linear-gradient(#000c,#0000);font-size:14px}
+#hud b{font-size:16px}#qual{position:absolute;left:8px;bottom:8px;right:8px;font-size:13px;color:#ffd479;text-shadow:0 1px 2px #000}
+#ring{position:absolute;right:10px;bottom:10px;width:64px;height:64px}
+#side .step{display:flex;gap:6px;margin:8px 0;flex-wrap:wrap}.dot{width:22px;height:22px;border-radius:50%;background:#2a313c;font-size:11px;display:grid;place-items:center}
+.dot.cur{outline:2px solid var(--acc)}.dot.ok{background:var(--ok);color:#000}.dot.bad{background:var(--bad);color:#000}.dot.mid{background:var(--warn);color:#000}
+#idealCv{width:100%;aspect-ratio:3/4;background:#0a0d12;border-radius:10px;display:block}
+#cue{font-size:16px;font-weight:600;margin:8px 0 2px}
+#result{position:absolute;inset:0;background:#0e1116f2;overflow:auto;padding:14px;display:none}
+#result.on{display:block}
+table{border-collapse:collapse;width:100%;font-size:13.5px}th,td{text-align:left;padding:6px 6px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--mute);font-weight:500}.p{font-weight:700}.p.ok{color:var(--ok)}.p.bad{color:var(--bad)}.p.na{color:var(--mute)}
+.cmp{display:flex;gap:10px;align-items:flex-start}.cmp canvas{width:120px;height:160px;background:#0a0d12;border-radius:8px;flex:none}
+#summary{display:none;margin-top:12px}#summary.on{display:block}
+.legend span{display:inline-block;width:10px;height:10px;border-radius:2px;margin:0 4px 0 10px}
+</style>
+</head>
+<body>
+<header><h1>Step-by-step Swing Guide <span class="note">POC</span></h1><a href="./">AR coach home</a></header>
+<main>
+  <div class="card" id="setup">
+    <div class="row">
+      <div><label>Stroke</label><br><select id="shot"></select></div>
+      <div><label>Hitting hand</label><br><select id="hand"><option value="right">Right</option><option value="left">Left</option></select></div>
+      <div><label>Camera</label><br><select id="cam"><option value="user">Front (selfie)</option><option value="environment">Rear</option></select></div>
+      <div><label>Voice</label><br><select id="voice"><option value="1">On</option><option value="0">Off</option></select></div>
+      <div style="align-self:flex-end"><button class="pri" id="startBtn" disabled>Loading pose model…</button></div>
+    </div>
+    <p class="note" id="setupStatus">Prop the phone 2 to 4 m away, side-on to you, so your whole body from head to feet is in the picture. You will go through the stroke one position at a time: move into the position shown, hold still, and you get that step's errors before the next one.</p>
+    <div class="honest">These checks are not coach-validated. Targets are the ideal avatar (Strike Player specs) seen from the side, with a tolerance band; the spec's coaching ranges widen the band where they exist. A 2D camera sees angles foreshortened when a limb points toward or away from the lens. Treat every pass/fail as a hint, not a verdict.</div>
+  </div>
+
+  <div id="live" hidden>
+    <div id="stage">
+      <video id="video" playsinline muted></video>
+      <canvas id="ov"></canvas>
+      <div id="hud"><b id="stepTitle">Step</b> <span id="stepState" class="note"></span></div>
+      <div id="qual"></div>
+      <svg id="ring" viewBox="0 0 64 64"><circle cx="32" cy="32" r="27" fill="#0008" stroke="#333" stroke-width="6"/><circle id="ringArc" cx="32" cy="32" r="27" fill="none" stroke="#3fb950" stroke-width="6" stroke-dasharray="0 170" transform="rotate(-90 32 32)"/><text id="ringTxt" x="32" y="37" fill="#fff" font-size="14" text-anchor="middle"></text></svg>
+      <div id="result"></div>
+    </div>
+    <div id="side" class="card">
+      <div class="note">Ideal position</div>
+      <canvas id="idealCv" width="300" height="400"></canvas>
+      <div id="cue"></div>
+      <div class="note" id="cueSub"></div>
+      <div class="step" id="dots"></div>
+      <div class="row"><button id="skipBtn">Capture now</button><button id="stopBtn">Stop</button></div>
+      <div class="legend note" style="margin-top:8px"><span style="background:var(--you)"></span>you <span style="background:#fff"></span>ideal</div>
+      <div class="note" id="engName" style="margin-top:6px"></div>
+    </div>
+  </div>
+
+  <div id="summary" class="card"></div>
+</main>
+
+<script src="engine/core.js"></script>
+<script src="engine/onnx.js"></script>
+<script>
+'use strict';
+const $ = s => document.querySelector(s);
+const K = { nose: 0, le_: 3, re_: 4, ls: 5, rs: 6, le: 7, re: 8, lw: 9, rw: 10, lh: 11, rh: 12, lk: 13, rk: 14, la: 15, ra: 16 };
+const BONES = [[5, 6], [5, 7], [7, 9], [6, 8], [8, 10], [5, 11], [6, 12], [11, 12], [11, 13], [13, 15], [12, 14], [14, 16], [0, 5], [0, 6]];
+const TOL = { elbow: 25, free: 35, knee: 15, lean: 12, handH: 0.10, ahead: 0.12 };
+const SPECKEY = { elbow: 'elbow_r', free: 'elbow_l', knee: 'knee_max', lean: 'lean' };
+const DEF = [
+  { id: 'elbow', label: 'Hitting elbow bend', unit: '°', lo: 'Bend your hitting elbow more', hi: 'Straighten your hitting arm more' },
+  { id: 'free', label: 'Free arm elbow bend', unit: '°', lo: 'Bend your free arm more', hi: 'Straighten your free arm more' },
+  { id: 'knee', label: 'Knee bend', unit: '°', lo: 'Bend your knees more', hi: 'Stand a bit taller, less knee bend' },
+  { id: 'lean', label: 'Upper-body lean (+ = toward the net)', unit: '°', lo: 'Tilt your upper body more toward the net', hi: 'Tilt your upper body back a little' },
+  { id: 'handH', label: 'Racket hand height (share of your height)', unit: '×H', lo: 'Raise your racket hand higher', hi: 'Lower your racket hand' },
+  { id: 'ahead', label: 'Racket hand in front of hips (share of height)', unit: '×H', lo: 'Bring your racket hand further forward, in front of your body', hi: 'Keep your racket hand further back, closer to your body' }
+];
+let TECH, SPEC, engine, stream, running = false, steps = [], si = 0, phase = 'idle', phaseT = 0, buf = [], holdT = null, results = [], Hpx = null, autoNext = null, lastFrame = null;
+
+const ang = (a, b, c) => { const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]]; const d = Math.hypot(...v1) * Math.hypot(...v2); return d ? Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / d))) * 180 / Math.PI : null; };
+const mid = (a, b) => [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2, Math.min(a[2] ?? 1, b[2] ?? 1)];
+const ok = (kp, ids) => ids.every(i => (kp[i][2] ?? 1) > 0.3);
+const facingOf = kp => { const e = kp[3][2] > kp[4][2] ? kp[3] : kp[4]; if (kp[0][2] > .3 && e[2] > .3 && Math.abs(kp[0][0] - e[0]) > 2) return Math.sign(kp[0][0] - e[0]); const hp = mid(kp[11], kp[12]); return Math.sign(kp[9][0] + kp[10][0] - 2 * hp[0]) || 1; };
+
+/** 2D side-view measures. Same function for the ideal avatar frame and for you, so they compare like for like. */
+function measure(kp, hand, facing, H) {
+  const R = hand === 'right', s = R ? K.rs : K.ls, e = R ? K.re : K.le, w = R ? K.rw : K.lw, os = R ? K.ls : K.rs, oe = R ? K.le : K.re, ow = R ? K.lw : K.rw;
+  const ground = Math.max(kp[K.la][1], kp[K.ra][1]), hip = mid(kp[K.lh], kp[K.rh]), sh = mid(kp[K.ls], kp[K.rs]);
+  const flex = (a, b, c) => { const x = ang(a, b, c); return x === null ? null : Math.round(180 - x); };
+  const kl = ok(kp, [11, 13, 15]) ? flex(kp[11], kp[13], kp[15]) : null, kr = ok(kp, [12, 14, 16]) ? flex(kp[12], kp[14], kp[16]) : null;
+  return {
+    elbow: ok(kp, [s, e, w]) ? flex(kp[s], kp[e], kp[w]) : null,
+    free: ok(kp, [os, oe, ow]) ? flex(kp[os], kp[oe], kp[ow]) : null,
+    knee: kl === null && kr === null ? null : Math.max(kl ?? -1, kr ?? -1),
+    lean: ok(kp, [5, 6, 11, 12]) ? Math.round(Math.atan2((sh[0] - hip[0]) * facing, hip[1] - sh[1]) * 180 / Math.PI) : null,
+    handH: ok(kp, [w, 15, 16]) && H ? +((ground - kp[w][1]) / H).toFixed(2) : null,
+    ahead: ok(kp, [w, 11, 12]) && H ? +(((kp[w][0] - hip[0]) * facing) / H).toFixed(2) : null
+  };
+}
+const ghostH = fr => (Math.max(fr[15][1], fr[16][1]) - fr[0][1]) / 0.88;
+function frameAt(shot, u) { const F = shot.frames; return F[Math.max(0, Math.min(F.length - 1, Math.round(u * (F.length - 1))))]; }
+
+function buildSteps(id) {
+  const t = TECH.shots[id], sp = SPEC.shots[id], H0 = ghostH(t.frames[0]);
+  return t.keys.map((k, i) => {
+    const fr = frameAt(t, k.u), m = measure(fr.map(p => [p[0], p[1], 1]), 'right', 1, H0), spec = (sp && sp.stages[i]) ? sp.stages[i] : { stage: k.phase, m: {} };
+    const targets = {};
+    for (const d of DEF) {
+      const v = m[d.id]; if (v === null) continue;
+      let tol = TOL[d.id], src = 'avatar ± ' + tol + (d.unit === '°' ? '°' : '');
+      const s = spec.m[SPECKEY[d.id]]; if (s && s.range && s.src === 'coaching') { const hw = (s.range[1] - s.range[0]) / 2; if (hw > tol) { tol = Math.min(hw, tol * 2); src = 'avatar, widened by spec coaching range [' + s.range.join(', ') + ']'; } }
+      let band = [+(v - tol).toFixed(2), +(v + tol).toFixed(2)]; if (d.unit === '°' && d.id !== 'lean') band = [Math.max(0, band[0]), Math.min(180, band[1])];
+      targets[d.id] = { ideal: v, band, src, spec3d: s ? s.ideal : null };
+    }
+    return { i, label: k.label, cue: k.cue, phase: k.phase, stage: spec.stage, u: k.u, frame: fr, targets };
+  });
+}
+
+// ---------- drawing ----------
+function drawStick(ctx, kp, map, color, lw) {
+  ctx.strokeStyle = color; ctx.fillStyle = color; ctx.lineWidth = lw; ctx.lineCap = 'round';
+  for (const [a, b] of BONES) { if ((kp[a][2] ?? 1) < .3 || (kp[b][2] ?? 1) < .3) continue; const p = map(kp[a]), q = map(kp[b]); ctx.beginPath(); ctx.moveTo(p[0], p[1]); ctx.lineTo(q[0], q[1]); ctx.stroke(); }
+  const h = map(kp[0]); ctx.beginPath(); ctx.arc(h[0], h[1], lw * 2.2, 0, 7); ctx.fill();
+}
+function fitMap(fr, W, H, pad = 0.12, flip = 1) { // fit an avatar frame (torso units) into W x H
+  const xs = fr.map(p => p[0] * flip), ys = fr.map(p => p[1]); const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  const s = Math.min(W * (1 - 2 * pad) / Math.max(.5, x1 - x0), H * (1 - 2 * pad) / Math.max(.5, y1 - y0));
+  return p => [W / 2 + (p[0] * flip - (x0 + x1) / 2) * s, H / 2 + (p[1] - (y0 + y1) / 2) * s];
+}
+function drawIdeal(step) {
+  const cv = $('#idealCv'), c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height);
+  const f = lastFrame && lastFrame.facing ? lastFrame.facing : 1;
+  drawStick(c, step.frame.map(p => [p[0], p[1], 1]), fitMap(step.frame, cv.width, cv.height, .1, f), '#fff', 5);
+}
+// avatar frame -> your pixels: hip-mid anchor, scaled to your height, facing your way, placed beside you
+function ghostToYou(fr, kp, facing) {
+  const H0 = ghostH(TECH.shots[$('#shot').value].frames[0]), s = (Hpx || 300) / H0, hip = mid(kp[11], kp[12]), dx = -facing * 0.45 * (Hpx || 300);
+  const g = fr[11] && fr[12] ? [(fr[11][0] + fr[12][0]) / 2, (fr[11][1] + fr[12][1]) / 2] : [0, 0];
+  const footY = Math.max(kp[15][1], kp[16][1]), gFoot = Math.max(fr[15][1], fr[16][1]);
+  return fr.map(p => [hip[0] + dx + (p[0] - g[0]) * s * facing, footY + (p[1] - gFoot) * s, 1]);
+}
+
+// ---------- flow ----------
+const say = t => { if ($('#voice').value !== '1' || !window.speechSynthesis) return; try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.rate = 1.02; speechSynthesis.speak(u); } catch (e) {} };
+function renderDots() { $('#dots').innerHTML = steps.map((s, i) => { const r = results[i]; const cls = r ? (r.fails === 0 ? 'ok' : r.fails <= 1 ? 'mid' : 'bad') : ''; return `<div class="dot ${cls} ${i === si ? 'cur' : ''}" title="${s.label}">${i + 1}</div>`; }).join(''); }
+function beginStep(i) {
+  si = i; const s = steps[i]; phase = 'pose'; phaseT = performance.now() / 1000; buf = []; holdT = null;
+  $('#result').classList.remove('on'); $('#stepTitle').textContent = `Step ${i + 1} of ${steps.length}: ${s.label}`; $('#cue').textContent = s.cue;
+  $('#cueSub').textContent = i === 0 ? 'Stand side-on, whole body in view. This step also measures your height in the picture.' : 'Move into this position slowly, then hold still.';
+  drawIdeal(s); renderDots(); say(`Step ${i + 1}. ${s.label}. ${s.cue}. Then hold still.`);
+}
+function median(a) { const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; }
+function capture(forced) {
+  const s = steps[si], recent = buf.filter(b => b.t > (buf.length ? buf[buf.length - 1].t : 0) - 0.5); if (!recent.length) { $('#qual').textContent = 'No body found yet. Step into view.'; return; }
+  const kp = recent[0].kp.map((_, j) => [median(recent.map(r => r.kp[j][0])), median(recent.map(r => r.kp[j][1])), median(recent.map(r => r.kp[j][2]))]);
+  const facing = facingOf(kp);
+  // body height in pixels: from the Ready step; never smaller than what this capture shows (you may have stepped closer)
+  const g = Math.max(kp[15][1], kp[16][1]) - kp[0][1]; if (g > 40 && (si === 0 || !Hpx || g / 0.88 > Hpx)) Hpx = g / 0.88;
+  const m = measure(kp, $('#hand').value, facing, Hpx), rows = [];
+  if (m.handH !== null && (m.handH > 1.45 || m.handH < -0.1)) m.handH = null; // outside the human range = bad keypoints, abstain
+  for (const d of DEF) {
+    const t = s.targets[d.id]; if (!t) continue; const v = m[d.id], pass = v === null ? null : v >= t.band[0] && v <= t.band[1];
+    rows.push({ id: d.id, label: d.label, unit: d.unit, value: v, ideal: t.ideal, band: t.band, pass, src: t.src, spec3d: t.spec3d, note: pass === null ? 'Not visible enough to measure (keep this body part in view, side-on)' : pass ? 'In range' : (v < t.band[0] ? d.lo : d.hi) });
+  }
+  const fails = rows.filter(r => r.pass === false).length, res = { step: si + 1, label: s.label, stage: s.stage, forced: !!forced, kp, facing, rows, fails, passed: rows.filter(r => r.pass).length, measured: rows.filter(r => r.pass !== null).length };
+  results[si] = res; phase = 'result'; showResult(res); renderDots();
+  const top = rows.filter(r => r.pass === false).slice(0, 2).map(r => r.note);
+  say(fails ? `${fails} ${fails === 1 ? 'thing' : 'things'} to fix. ${top.join('. ')}.` : 'Good, this position is in range.');
+}
+const fmt = (v, u) => v === null || v === undefined ? '–' : (u === '°' ? Math.round(v) + '°' : v.toFixed(2));
+function showResult(r) {
+  const last = si === steps.length - 1;
+  const el = $('#result'); el.innerHTML = `
+    <div class="cmp"><canvas id="cmpCv" width="240" height="320"></canvas>
+    <div><b>Step ${r.step}: ${r.label}</b> <span class="note">(spec stage: ${r.stage})</span><br>
+    <span class="p ${r.fails ? 'bad' : 'ok'}">${r.passed} of ${r.measured} checks in range</span>${r.forced ? '<br><span class="note">You did not hold still, so the last half second was used.</span>' : ''}
+    <div class="row" style="margin-top:8px"><button id="retryBtn">Retry step</button><button class="pri" id="nextBtn">${last ? 'See summary' : 'Next step'} <span id="nextIn"></span></button></div></div></div>
+    <table style="margin-top:10px"><tr><th>Check</th><th>You</th><th>Target</th><th></th><th>What to do</th></tr>
+    ${r.rows.map(x => `<tr><td>${x.label}<div class="note">${x.src}${x.spec3d !== null && x.spec3d !== undefined && x.unit === '°' ? ' · spec 3D ideal ' + Math.round(x.spec3d) + '°' : ''}</div></td><td>${fmt(x.value, x.unit)}</td><td>${fmt(x.band[0], x.unit)} to ${fmt(x.band[1], x.unit)}</td><td class="p ${x.pass === null ? 'na' : x.pass ? 'ok' : 'bad'}">${x.pass === null ? 'n/a' : x.pass ? 'PASS' : 'FAIL'}</td><td>${x.note}</td></tr>`).join('')}</table>
+    <p class="note">Not coach-validated. 2D side view; the white figure is the ideal avatar at your scale.</p>`;
+  el.classList.add('on');
+  // you (orange) over ideal (white), both fitted on your hips
+  const c = $('#cmpCv').getContext('2d'), s = steps[si], H0 = ghostH(TECH.shots[$('#shot').value].frames[0]);
+  const hip = mid(r.kp[11], r.kp[12]), foot = Math.max(r.kp[15][1], r.kp[16][1]), sc = (Hpx || 300) / H0, gh = [(s.frame[11][0] + s.frame[12][0]) / 2], gf = Math.max(s.frame[15][1], s.frame[16][1]);
+  const ideal = s.frame.map(p => [hip[0] + (p[0] - gh[0]) * sc * r.facing, foot + (p[1] - gf) * sc, 1]);
+  const all = ideal.concat(r.kp.filter(p => p[2] > .3)), xs = all.map(p => p[0]), ys = all.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys), k = Math.min(200 / Math.max(1, x1 - x0), 280 / Math.max(1, y1 - y0));
+  const mp = p => [120 + (p[0] - (x0 + x1) / 2) * k, 160 + (p[1] - (y0 + y1) / 2) * k];
+  drawStick(c, ideal, mp, 'rgba(255,255,255,.8)', 4); drawStick(c, r.kp, mp, '#ff9f43', 4);
+  $('#retryBtn').onclick = () => { clearInterval(autoNext); beginStep(si); };
+  $('#nextBtn').onclick = () => { clearInterval(autoNext); last ? finishAll() : beginStep(si + 1); };
+  let n = 10; clearInterval(autoNext); autoNext = setInterval(() => { n--; const e = $('#nextIn'); if (e) e.textContent = `(${n})`; if (n <= 0) { clearInterval(autoNext); $('#nextBtn')?.click(); } }, 1000);
+}
+function finishAll() {
+  phase = 'done'; running = false; stopCam(); $('#live').hidden = true; $('#setup').hidden = false;
+  const tot = results.reduce((a, r) => a + (r ? r.measured : 0), 0), pass = results.reduce((a, r) => a + (r ? r.passed : 0), 0);
+  const fixes = []; results.forEach(r => r && r.rows.forEach(x => { if (x.pass === false) fixes.push(`Step ${r.step} ${r.label}: ${x.note} (you ${fmt(x.value, x.unit)}, target ${fmt(x.band[0], x.unit)} to ${fmt(x.band[1], x.unit)})`); }));
+  const S = $('#summary'); S.classList.add('on');
+  S.innerHTML = `<h2 style="margin:0 0 6px">${TECH.shots[$('#shot').value].name}: ${pass} of ${tot} checks in range</h2>
+    <table><tr><th>Step</th><th>Spec stage</th><th>In range</th><th>Errors</th></tr>${results.map(r => r ? `<tr><td>${r.step}. ${r.label}</td><td>${r.stage}</td><td>${r.passed}/${r.measured}</td><td>${r.rows.filter(x => x.pass === false).map(x => x.note).join('<br>') || '–'}</td></tr>` : '').join('')}</table>
+    ${fixes.length ? `<p><b>Work on first:</b> ${fixes[0]}</p>` : '<p><b>All measured positions were in range.</b></p>'}
+    <div class="honest">Not coach-validated: the bands come from the ideal avatar, not from measured players, and a phone camera only sees 2D.</div>
+    <div class="row"><button class="pri" id="againBtn">Start again</button><button id="expBtn">Export JSON</button></div>`;
+  $('#againBtn').onclick = () => { S.classList.remove('on'); start(); };
+  $('#expBtn').onclick = () => { const blob = new Blob([JSON.stringify({ schema: 'padel.guide_session.v1', at: new Date().toISOString(), shot: $('#shot').value, hand: $('#hand').value, engine: engine.info.name, results: results.map(r => r && Object.assign({}, r, { kp: undefined })) }, null, 1)], { type: 'application/json' }); const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'swing_guide_' + $('#shot').value + '.json'; a.click(); };
+  say(`Done. ${pass} of ${tot} checks in range.`); window.__guideDone = { pass, tot, results: results.map(r => r && { step: r.step, rows: r.rows.map(x => [x.id, x.value, x.band, x.pass]) }) };
+}
+
+// ---------- camera loop ----------
+function stopCam() { running = false; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; clearInterval(autoNext); }
+async function start() {
+  $('#summary').classList.remove('on'); results = []; Hpx = null;
+  steps = buildSteps($('#shot').value);
+  engine.configure({ shot: $('#shot').value, handedness: $('#hand').value }); engine.reset();
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: $('#cam').value, width: { ideal: 1280 }, height: { ideal: 720 } } }); }
+  catch (e) { $('#setupStatus').textContent = 'Camera not available: ' + (e.message || e) + (window.isSecureContext ? '' : ' (page must be HTTPS)'); return; }
+  const v = $('#video'); v.srcObject = stream; await v.play();
+  $('#stage').classList.toggle('mirror', $('#cam').value === 'user');
+  $('#setup').hidden = true; $('#live').hidden = false; running = true; scrollTo(0, 0); beginStep(0); loop();
+}
+async function loop() {
+  const v = $('#video'), cv = $('#ov'), c = cv.getContext('2d'); let idx = 0;
+  while (running) {
+    if (v.readyState < 2) { await new Promise(r => setTimeout(r, 50)); continue; }
+    const w = v.videoWidth, h = v.videoHeight; if (cv.width !== w) { cv.width = w; cv.height = h; }
+    const t = performance.now() / 1000, r = await engine.processFrame({ image: v, width: w, height: h, t, index: idx++ });
+    if (!running) break;
+    c.clearRect(0, 0, w, h);
+    const kp = r.skeleton, s = steps[si];
+    $('#qual').textContent = r.quality && r.quality.message ? r.quality.message : '';
+    if (kp) {
+      const facing = facingOf(kp); lastFrame = { kp, facing };
+      if (!Hpx && r.quality.fullBody) Hpx = (Math.max(kp[15][1], kp[16][1]) - kp[0][1]) / 0.88;
+      if (phase === 'pose' || phase === 'hold') drawStick(c, ghostToYou(s.frame, kp, facing), p => p, 'rgba(255,255,255,.75)', Math.max(3, w / 220));
+      drawStick(c, kp, p => p, '#ff9f43', Math.max(3, w / 260));
+      buf.push({ t, kp: kp.map(p => p.slice()) }); while (buf.length && buf[0].t < t - 1.2) buf.shift();
+    }
+    // hold detection: mean joint motion over 0.5 s below 2.5 % of body height, for 1.2 s
+    if (phase === 'pose' || phase === 'hold') {
+      const since = t - phaseT, H = Hpx || 300, win = buf.filter(b => b.t > t - 0.5);
+      let still = false;
+      if (kp && r.quality.fullBody && win.length >= 2) { const a = win[0].kp, b = win[win.length - 1].kp, J = [0, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]; still = J.reduce((m, j) => m + Math.hypot(a[j][0] - b[j][0], a[j][1] - b[j][1]), 0) / J.length / H < 0.025; }
+      if (since < 2.5) { $('#stepState').textContent = 'get into position…'; setRing(0, Math.ceil(2.5 - since)); }
+      else if (still) { holdT = holdT ?? t; phase = 'hold'; const p = (t - holdT) / 1.2; $('#stepState').textContent = 'hold still…'; setRing(p, ''); if (p >= 1) { setRing(0, ''); capture(false); } }
+      else { holdT = null; phase = 'pose'; $('#stepState').textContent = r.quality.fullBody ? 'hold still to capture' : 'whole body must be in view'; setRing(0, ''); if (since > 14 && kp) { setRing(0, ''); capture(true); } }
+    }
+    if (r.timing) $('#engName').textContent = engine.info.name + ' · ' + Math.round(r.timing.inferenceMs) + ' ms/frame';
+    await new Promise(requestAnimationFrame);
+  }
+}
+function setRing(p, txt) { $('#ringArc').setAttribute('stroke-dasharray', `${Math.max(0, Math.min(1, p)) * 170} 170`); $('#ringTxt').textContent = txt; }
+
+// ---------- init ----------
+(async () => {
+  try {
+    [TECH, SPEC] = await Promise.all([fetch('techniques.json').then(r => r.json()), fetch('guide_spec.json').then(r => r.json())]);
+    $('#shot').innerHTML = Object.entries(TECH.shots).map(([k, s]) => `<option value="${k}">${s.name}</option>`).join('');
+    const q = new URLSearchParams(location.search); if (q.get('shot') && TECH.shots[q.get('shot')]) $('#shot').value = q.get('shot');
+    engine = PadelEngines.create('onnx', { mode: 'shadow', shot: $('#shot').value, view: 'side', checks: [] });
+    await engine.init({ mode: 'shadow' });
+    $('#startBtn').disabled = false; $('#startBtn').textContent = 'Start guided swing'; $('#engName').textContent = engine.info.name;
+  } catch (e) { $('#setupStatus').textContent = 'Could not load: ' + (e.message || e); console.error(e); }
+  $('#startBtn').onclick = start;
+  $('#stopBtn').onclick = () => { stopCam(); results.some(Boolean) ? finishAll() : ($('#live').hidden = true, $('#setup').hidden = false); };
+  $('#skipBtn').onclick = () => { if (phase === 'pose' || phase === 'hold') capture(true); };
+})();
+</script>
+</body>
+</html>
