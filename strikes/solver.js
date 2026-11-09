@@ -465,7 +465,8 @@ export function optimizeArm(ch, side, Dchest, shoulderPos, target, init, grip, e
       }
       if (extra.leftReach) {                // two-handed: score the second hand's best legal grip on this racket pose
         const lr = extra.leftReach, fist2 = add(origin, qrot(R, [0, -(rk.fist + lr.along), 0]));
-        const dl = len(sub(fist2, lr.shoulder)); const ex2 = dl - 0.86 * lr.L; if (ex2 > 0) c += (ex2 / 0.01) ** 2; if (dl < 0.35 * lr.L) c += ((0.35 * lr.L - dl) / 0.01) ** 2;
+        const dl = len(sub(fist2, lr.shoulder)); const ex2 = dl - (lr.gsL && lr.w === 0 ? 0.97 * (lr.L + len(lr.gsL.fistL)) : 0.86 * lr.L); if (ex2 > 0)   // v12 loose grip: the fist sits a hand-length past the wrist (0.86 x arm-to-wrist forbade a normal two-hand contact)
+        c += (ex2 / 0.01) ** 2; if (dl < 0.35 * lr.L) c += ((0.35 * lr.L - dl) / 0.01) ** 2;
         if (!lr.w) { /* reach-only estimate */ } else {
         const handL = qmul(R, qinv(lr.gsL.G)), wristL = sub(fist2, qrot(handL, lr.gsL.fistL));
         const JL = solveArmFast(ch, "l", Dchest, lr.shoulder, wristL, handL, lr.pole);
@@ -549,12 +550,13 @@ export function solveKey(ch, p, grip, opts = {}, prev = null) {
   const twoH = (p.two_hand || 0) > 0.5 && grip.L;
   const C = opts.isContact;
   const tgtR = { center: p.racket.center, face: faceT, faceSigned: signed, dir: p.racket.dir, pole: norm(p.r_pole), pref: p.r_wrist || {},
-                 posScale: C ? (twoH ? 0.04 : 0.01) : 0.06, faceScale: C ? 8 : 30, dirScale: C ? 25 : 45, faceW: C ? 3 : 1, dirW: twoH ? 0.08 : (C ? 0.6 : 0.5),
+                 posScale: C ? 0.01 : 0.06, faceScale: C ? 8 : 30, dirScale: C ? (twoH ? 10 : 25) : 45,   // v12: two-hand contact keys keep centre and racket direction (was 0.04 m / dirW 0.08: racket hung head-down)
+                 faceW: C ? 3 : 1, dirW: twoH ? (opts.twoDirW ?? 0.6) : (C ? 0.6 : 0.5),
                  contW: C ? 0.15 : Math.min(8, opts.contK ?? 1), prior: C ? 0 : 1 };
   const P = trunk.pos, cap = ch.body.body_capsules_m, hd = add(P[ch.N("Head")], [0, 0.09, 0]);
   const body = [[P[ch.N("Pelvis")], P[ch.N("Spine2")], cap.torso_lower], [P[ch.N("Spine2")], P[ch.N("Neck")], cap.torso_upper], [hd, hd, cap.head]];
   const rOpt = optimizeArm(ch, "r", D.chest, shR, tgtR, anglesToParams(ch, "r", seed.J), grip,
-    { body, multiStart: twoH ? 4000 : 1500, ...(twoH ? { leftReach: { shoulder: shL, along: grip.secondAlong, L: ch.L.l_upper + ch.L.l_fore, gsL: grip.L, pole: norm(p.l_arm.pole), w: 60 } } : {}) }, prev ? prev.arms.r : null);
+    { body, multiStart: twoH ? 4000 : 1500, ...(twoH ? { leftReach: { shoulder: shL, along: grip.secondAlong, L: ch.L.l_upper + ch.L.l_fore, gsL: grip.L, pole: norm(p.l_arm.pole), w: grip.loose ? 0 : 60 } } : {}) }, prev ? prev.arms.r : null);
   // left: free hand to its wrist target, or (two-handed) onto the handle through its own grip socket
   let lOpt;
   if (twoH) {
@@ -562,7 +564,9 @@ export function solveKey(ch, p, grip, opts = {}, prev = null) {
     const fistT = add(origin, qrot(R, [0, -(rk.fist + grip.secondAlong), 0])); const handL = qmul(R, qinv(grip.L.G));
     const wristL = sub(fistT, qrot(handL, grip.L.fistL));
     const s2 = solveArm(ch, "l", D.chest, shL, wristL, handL, norm(p.l_arm.pole), {});
-    lOpt = optimizeArm(ch, "l", D.chest, shL, { wrist: wristL, handQ: handL, pole: norm(p.l_arm.pole), pref: {} }, anglesToParams(ch, "l", s2.J), null, {}, prev ? prev.arms.l : null);
+    lOpt = grip.loose
+      ? optimizeArm(ch, "l", D.chest, shL, { handle: { gs: grip.L, p: origin, d: qrot(R, [0, -1, 0]), n: qrot(R, [0, 0, 1]), band: [rk.fist + grip.slide[0], rk.fist + grip.slide[1]], tilt: grip.tiltFree, roll: grip.rollFree }, pole: norm(p.l_arm.pole), pref: {} }, anglesToParams(ch, "l", s2.J), null, { multiStart: 1500 }, prev ? prev.arms.l : null)
+      : optimizeArm(ch, "l", D.chest, shL, { wrist: wristL, handQ: handL, pole: norm(p.l_arm.pole), pref: {} }, anglesToParams(ch, "l", s2.J), null, {}, prev ? prev.arms.l : null);
   } else {
     const la = p.l_arm; const pref = { wflex: la.wflex ?? -10, wdev: 0, pron: la.pron ?? 0 };
     const s2 = solveArm(ch, "l", D.chest, shL, la.hand, null, norm(la.pole), pref);
@@ -606,7 +610,7 @@ export function makeGrip(ch, tech, sport, layer) {
   const gdef = layer.grips[tech.grip || "continental"]; if (!gdef) throw new Error(`${tech.id}: unknown grip ${tech.grip}`);
   const R = gripSocket(ch, "r", gdef, impl);
   const sh = gdef.second_hand; const L = sh ? gripSocket(ch, "l", layer.grips[sh.grip], impl, !!sh.opposite_face) : null;
-  return { impl, rk: rkOf(impl), R, L, secondAlong: sh ? sh.along_handle_m : 0, slide: sh ? (sh.slide_m || [sh.along_handle_m, sh.along_handle_m]) : null, rollFree: sh ? (sh.roll_free_deg ?? 0) : 0, tiltFree: sh ? (sh.tilt_free_deg ?? 0) : 0,
+  return { impl, rk: rkOf(impl), R, L, secondAlong: sh ? sh.along_handle_m : 0, slide: sh ? (sh.slide_m || [sh.along_handle_m, sh.along_handle_m]) : null, rollFree: sh ? Math.max(sh.roll_free_deg ?? 0, sh.loose_deg ?? 0) : 0, tiltFree: sh ? Math.max(sh.tilt_free_deg ?? 0, sh.loose_deg ?? 0) : 0, loose: sh ? (sh.loose_deg ?? 0) : 0, closureTilt: sh ? (sh.closure_tilt_deg ?? Math.max(sh.tilt_free_deg ?? 0, sh.loose_deg ?? 0)) : 0,   // v12 loose_deg: second hand only has to sit ON the handle (axis tilt and roll free up to loose_deg), so it cannot dictate the racket face
     curlsR: R.curls, curlsL: L ? L.curls : relaxedCurls(ch, "L") };
 }
 export function compileTechnique(ch, tech, sport, layer, opts = {}) {
@@ -673,6 +677,7 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
     at = build();
   }
   if (tech.micro) at = microLayer(at, tech.micro, tc, T[0], T[T.length - 1]);
+  const at0ref = at;
   let solve = (t) => poseFromState(ch, at(t), grip); let bakeOut = null;
   if (grip.L) {   // two-handed = closed chain: both arms solved TOGETHER at dense keys (1/30 s) by box-projected
                   // Levenberg-Marquardt over the 14 joint angles. Hard terms: second-hand fist on the handle axis inside its slide
@@ -680,7 +685,11 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
                   // continuity and acceleration vs the previous dense keys. Joint ranges are box bounds.
     const keyRk = Tk.map((t) => poseFromState(ch, { ...at(t), twoHand: 0 }, grip).racket);
     const cf = [0, 1, 2].map((c) => clampedSpline(Tk, keyRk.map((r) => r.center[c])));
-    const nfA = []; for (const r of keyRk) { let n = r.normal; const pr = nfA[nfA.length - 1]; if (pr && dot(pr, n) < 0) n = mul(n, -1); nfA.push(n); }
+    // v12 (2026-11-08): signed face in the closed chain too. The hitting face is ccS * (+Z normal) for every key (the keys were
+    // solved with the signed face); v11 flipped normals for continuity and used a sign-blind cross() residual, so the
+    // two-handed backhand could hit with the wrong face.
+    const ccS = faceSide || 0;
+    const nfA = []; for (const r of keyRk) { let n = ccS ? mul(r.normal, ccS) : r.normal; const pr = nfA[nfA.length - 1]; if (!ccS && pr && dot(pr, n) < 0) n = mul(n, -1); nfA.push(n); }
     const nf = [0, 1, 2].map((c) => clampedSpline(Tk, nfA.map((n) => n[c])));
     const bf = armBounds(ch, true), NP = PK.length;
     const toX = (Jr, Jl) => PK.map((k) => Jr[k]).concat(PK.map((k) => Jl[k]));
@@ -699,19 +708,22 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
         const R = qmul(A.hand, grip.R.G), origin = add(wr, qrot(A.hand, grip.R.g)), center = add(origin, qrot(R, [0, -rk.center, 0]));
         const n = qrot(R, [0, 0, 1]), d = qrot(R, [0, -1, 0]);
         sub(center, cT).forEach((v) => r.push(v / 0.03));
-        const nn = dot(n, nT) < 0 ? mul(n, -1) : n; const fw = opts.fw || 0.3; cross(nn, nT).forEach((v) => r.push(v / fw));
+        const fw = opts.fw || 0.3; if (ccS) sub(mul(n, ccS), nT).forEach((v) => r.push(v / fw)); else { const nn = dot(n, nT) < 0 ? mul(n, -1) : n; cross(nn, nT).forEach((v) => r.push(v / fw)); }
         const AL = armFromAngles(ch, "l", D.chest, Jl), elL = add(shL, qrot(AL.upper, [0, -ch.L.l_upper, 0])), wrL = add(elL, qrot(qmul(AL.upper, qaxis([1, 0, 0], -Jl.elbow)), [0, -ch.L.l_fore, 0]));
         const fist = add(wrL, qrot(AL.hand, grip.L.fistL)), v = sub(fist, origin), along = dot(v, d);
-        sub(v, mul(d, along)).forEach((q) => r.push(q / 0.0001));
-        const lo = rk.fist + grip.slide[0], hi = rk.fist + grip.slide[1]; r.push((along < lo ? along - lo : along > hi ? along - hi : 0) / 0.0002);
-        const axL = qrot(AL.hand, qrot(grip.L.G, [0, -1, 0])); const tilt = Math.acos(Math.max(-1, Math.min(1, dot(axL, d)))) * DEG; r.push(Math.max(0, tilt - grip.tiltFree) / 0.3);
+        sub(v, mul(d, along)).forEach((q) => r.push(q / (opts.ccFist ?? 0.003)));   // v12: was 0.1 mm: 2 mm of left-fist error outweighed 60 cm of racket path, so the right arm left its keys; the closure pass below makes the left fist exact
+        const lo = rk.fist + grip.slide[0], hi = rk.fist + grip.slide[1]; r.push((along < lo ? along - lo : along > hi ? along - hi : 0) / (opts.ccFist ?? 0.003));
+        const axL = qrot(AL.hand, qrot(grip.L.G, [0, -1, 0])); const tilt = Math.acos(Math.max(-1, Math.min(1, dot(axL, d)))) * DEG; r.push(Math.max(0, tilt - grip.tiltFree) / (opts.ccTilt ?? 3));
         const nL = qrot(AL.hand, qrot(grip.L.G, [0, 0, 1])); const roll = Math.acos(Math.max(-1, Math.min(1, dot(nL, n)))) * DEG; r.push(Math.max(0, roll - grip.rollFree) / 2);
         if (xPrev) x.forEach((q, i) => r.push((q - xPrev[i]) / 40));
-        if (pred) x.forEach((q, i) => r.push((q - pred[i]) / 3));
+        if (pred) x.forEach((q, i) => r.push((q - pred[i]) / (opts.ccPred ?? 12)));
         return r;
       };
       const cost = (r) => r.reduce((s, v) => s + v * v, 0);
-      let x = clampX(xPrev ? xPrev.slice() : toX(st.arms.r, st.arms.l)), r = resid(x), c = cost(r), lam = 1e-2;
+      // v12: seed every dense frame from the interpolated KEY arms (the keys are already jointly holdable two-handed poses);
+      // v11 seeded from the previous frame and pulled hard toward constant velocity, so the chain drifted 30-40 cm off the keys.
+      let x = clampX(toX(st.arms.r, st.arms.l)), r = resid(x), c = cost(r), lam = 1e-2;
+      { const xp = xPrev ? clampX(xPrev.slice()) : null; if (xp) { const rp = resid(xp), cp = cost(rp); if (cp < c) { x = xp; r = rp; c = cp; } } }
       for (let it = 0; it < 60; it++) {
         const m = r.length, Jm = [];
         for (let j = 0; j < 2 * NP; j++) { const xe = x.slice(); xe[j] += 0.05; const re = resid(xe); Jm.push(re.map((v, i) => (v - r[i]) / 0.05)); }
@@ -735,7 +747,8 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
       const [Jr, Jl] = fromX(x); ts.push(t); jr.push(Jr); jl.push(Jl);
     }
     const n = ts.length, m = Math.max(2, Math.round(0.25 / step));
-    const closeLoop = (arr) => arr.map((v, i) => { const u = (i - (n - 1 - m)) / m; if (u <= 0) return v; const ww = u * u * u * (u * (6 * u - 15) + 10); return v + (arr[0] - v) * ww; });
+    const closeLoop = (arr) => tech.end === "hold" ? arr : arr.map((v, i) => {   // v12: held strokes do not blend back to the first key (that blend jerked the left arm in the last 0.25 s)
+      const u = (i - (n - 1 - m)) / m; if (u <= 0) return v; const ww = u * u * u * (u * (6 * u - 15) + 10); return v + (arr[0] - v) * ww; });
     const rf = {}, lf = {}; for (const k of PK) { rf[k] = clampedSpline(ts, closeLoop(jr.map((J) => J[k]))); lf[k] = clampedSpline(ts, closeLoop(jl.map((J) => J[k]))); }
     // closure pass: at every 1/120 s the left arm alone is re-solved (LM, 7 angles) so its fist sits exactly on the handle
     // axis inside the slide band with the hand axis along the handle. The prior is the spline value AT THAT TIME (no history),
@@ -774,7 +787,7 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
         const fist = add(wrL, qrot(AL.hand, grip.L.fistL)), v = sub(fist, origin), along = dot(v, d);
         sub(v, mul(d, along)).forEach((q) => r.push(q / 0.00002));
         const lo = rk.fist + grip.slide[0], hi = rk.fist + grip.slide[1]; r.push((along < lo ? along - lo : along > hi ? along - hi : 0) / 0.00002);
-        const axL = qrot(AL.hand, qrot(grip.L.G, [0, -1, 0])); cross(axL, d).forEach((q) => r.push(q / 0.002));
+        const axL = qrot(AL.hand, qrot(grip.L.G, [0, -1, 0])); if (grip.loose) { const tl = Math.acos(Math.max(-1, Math.min(1, dot(axL, d)))) * DEG; r.push(Math.max(0, tl - grip.closureTilt) / 0.5); } else cross(axL, d).forEach((q) => r.push(q / 0.002));
         const nL = qrot(AL.hand, qrot(grip.L.G, [0, 0, 1])); const roll = Math.acos(Math.max(-1, Math.min(1, dot(nL, n3)))) * DEG; r.push(Math.max(0, roll - grip.rollFree) / 2);
         x.forEach((q, i) => r.push((q - x0[i]) / 30));
         return r; };
@@ -784,7 +797,7 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
     const lf2 = {}; for (const k of PK) lf2[k] = clampedSpline(cts, cjl.map((J) => J[k]));
     bakeOut = { ts, jr, jl, cts, cjl };
     const at0 = at;
-    solve = (t) => { const st = at0(t); const Jr = softJ(rf, t), Jl = {}; for (const k of PK) Jl[k] = lf2[k](t); st.arms.r = Jr; st.arms.l = Jl; st.leftBaked = true; return poseFromState(ch, st, grip); };
+    solve = (t) => { const st = at0(t); const Jr = softJ(rf, t), Jl = {}; for (const k of PK) Jl[k] = lf2[k](t); st.arms.r = Jr; st.arms.l = Jl; st.leftBaked = true; const P = poseFromState(ch, st, grip); P.arms = { r: Jr, l: Jl }; return P; };
   }
   // time warp
   const sm = tech.slowmo || { from: ph[1].name, to: ph[ph.length - 2].name, rate: 1 };
@@ -809,7 +822,8 @@ export function compileTechnique(ch, tech, sport, layer, opts = {}) {
     return add(p0, mul(sub(p1, p0), Math.min(1, Math.max(0, (rel - t0) / ((t1 - t0) || 1))))); };
   const tr0 = T[Math.max(0, ph.findIndex((p) => p.name === (tech.trail?.from || ph[1].name)))], tr1 = T[ph.findIndex((p) => p.name === (tech.trail?.to || ph[ph.length - 2].name))];
   const trail = []; for (let t = tr0; t <= tr1 + 1e-9; t += 1 / 240) trail.push([t, solve(t).racket.center]);
-  return { id: tech.id, T, t0: T[0], t1: T[T.length - 1], tc, speed, solve, at: grip.L ? ((t) => { const r = solve(t); return { ...at(t), twoHand: at(t).twoHand }; }) : at, ballAt, ballIn, ballOut, contact: C, tIn0, tOut1, trail, phases: ph, tA, tB, grip, keys, rk, bake: bakeOut, loco: LOCO };
+  return { id: tech.id, T, t0: T[0], t1: T[T.length - 1], tc, speed, solve, at: grip.L ? ((t) => { const r = solve(t), a = at(t); return { ...a, arms: r.arms || a.arms, twoHand: a.twoHand }; }) : at,   // v12: closed chain reports the SOLVED arms (v11 returned the key arms, so elbow/ER gates measured keys)
+    ballAt, atKeys: at0ref, ballIn, ballOut, contact: C, tIn0, tOut1, trail, phases: ph, tA, tB, grip, keys, rk, bake: bakeOut, loco: LOCO };
 }
 
 // ------------------------------------------------------------------ micro-motion layer (v7m)

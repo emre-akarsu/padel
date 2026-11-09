@@ -2,7 +2,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
-import { loadLayer, compileTechnique, timeTable } from "./solver.js?v=11";
+import { loadLayer, compileTechnique, timeTable } from "./solver.js?v=12";
 
 const $ = (id) => document.getElementById(id);
 const stage = $("stage");
@@ -57,7 +57,7 @@ const world = new THREE.Group(); scene.add(world);           // mirrored (scale.
 const fx = new THREE.Group(); world.add(fx);
 let ch, bones = {}, restQ = {}, armRoot;
 // shared layer: body profile (bone map, ROM), implements, grips -> see specs/README.md
-const { ch: chL, layer } = await loadLayer(async (p) => (await fetch(p)).json());
+const { ch: chL, layer } = await loadLayer(async (p) => (await fetch(p, { cache: "no-cache" })).json());
 ch = chL;
 const gltf = await new GLTFLoader().loadAsync("assets/player.glb");
 world.add(gltf.scene);
@@ -138,7 +138,7 @@ if (location.hostname.endsWith("github.io")) {
   } catch (e) { /* offline or rate-limited: index.json is enough */ }
 }
 const sportIds = [...new Set([...index.sports, ...found, ...(url.searchParams.get("sport") ? [url.searchParams.get("sport")] : [])])];
-for (const s of sportIds) { try { state.sports[s] = await (await fetch(`specs/${s}.json?v=12`, { cache: "no-cache" })).json(); } catch (e) { console.warn("spec", s, e); } }
+for (const s of sportIds) { try { state.sports[s] = await (await fetch(`specs/${s}.json?v=13`, { cache: "no-cache" })).json(); } catch (e) { console.warn("spec", s, e); } }
 for (const s of [...sportIds]) if (!state.sports[s]) sportIds.splice(sportIds.indexOf(s), 1);
 const selSport = $("sport"), selTech = $("tech");
 for (const s of sportIds) selSport.add(new Option(state.sports[s].name, s));

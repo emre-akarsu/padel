@@ -17,6 +17,7 @@
    0.11
   ],
   "roll_free_deg": 60,
-  "tilt_free_deg": 0
+  "tilt_free_deg": 0,
+  "loose_deg": 35
  }
 }

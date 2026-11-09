@@ -3,14 +3,14 @@
 // Reuses ../strikes assets and solver as-is. Falls back to the 2D stick ghost if anything fails.
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
-import { loadLayer, compileTechnique } from '../strikes/solver.js?v=8';
+import { loadLayer, compileTechnique } from '../strikes/solver.js?v=12';
 
 const BASE = '../strikes/', B = 'Bip01 ';
 const st = { ready: false, comps: {} };
 try {
   // Strike Player v6 layer: anatomical arm model, grip sockets, joint limits (body/, implements/, grips/, specs/)
   const [{ ch, layer }, sport, gltf] = await Promise.all([
-    loadLayer(async p => (await fetch(BASE + p)).json()),
+    loadLayer(async p => (await fetch(BASE + p, { cache: 'no-cache' })).json()),
     fetch(BASE + 'specs/padel.json').then(r => r.json()),
     new GLTFLoader().loadAsync(BASE + 'assets/player.glb')]);
   const bones = {};
