@@ -16,9 +16,10 @@ main{max-width:1100px;margin:0 auto;padding:12px 16px 40px}
 label{font-size:13px;color:var(--mute)}select,button{font:inherit;color:var(--ink);background:#222a35;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
 button.pri{background:var(--acc);color:#04111f;border-color:var(--acc);font-weight:600}button:disabled{opacity:.5}
 .note{font-size:12.5px;color:var(--mute)}.honest{border-left:3px solid var(--warn);padding:6px 10px;margin:10px 0;font-size:13px;color:#e3c47a;background:#2a2312;border-radius:4px}
-#live{display:grid;grid-template-columns:1fr 260px;gap:12px;margin-top:12px}
-@media (max-width:760px){#live{grid-template-columns:1fr}#result.on{position:fixed;z-index:5}}
-#stage{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3}
+#live{display:grid;grid-template-columns:minmax(0,1fr) 260px;gap:12px;margin-top:12px}#live>*{min-width:0}
+@media (max-width:760px){#live{grid-template-columns:1fr}#result.on{position:fixed;z-index:5}#side #idealCv{max-height:28svh;width:auto;margin:0 auto}main{padding:8px 8px 32px}}
+@media (max-height:520px) and (orientation:landscape){#live{grid-template-columns:minmax(0,1fr) 200px;margin-top:4px}header{display:none}#side #idealCv{max-height:40svh;width:auto;margin:0 auto}#side{padding:8px}#side .legend,#side #cueSub{display:none}#result.on{position:fixed;z-index:5}}
+#stage{position:relative;background:#000;border-radius:12px;overflow:hidden;aspect-ratio:4/3;margin:0 auto;max-width:100%}
 #stage video,#stage #ov{position:absolute;inset:0;width:100%;height:100%;object-fit:contain}
 #stage.mirror video,#stage.mirror #ov{transform:scaleX(-1)}
 #hud{position:absolute;left:0;right:0;top:0;padding:8px 10px;background:linear-gradient(#000c,#0000);font-size:14px}
@@ -93,6 +94,7 @@ const DEF = [
   { id: 'handH', label: 'Racket hand height (share of your height)', unit: '×H', lo: 'Raise your racket hand higher', hi: 'Lower your racket hand' },
   { id: 'ahead', label: 'Racket hand in front of hips (share of height)', unit: '×H', lo: 'Bring your racket hand further forward, in front of your body', hi: 'Keep your racket hand further back, closer to your body' }
 ];
+let SM = null, ANC = null, FACE = { v: 1, n: 0 }, GH = { from: null, to: null, t0: 0 }, IFIT = null;
 let TECH, SPEC, engine, stream, running = false, steps = [], si = 0, phase = 'idle', phaseT = 0, buf = [], holdT = null, results = [], Hpx = null, autoNext = null, lastFrame = null;
 
 const ang = (a, b, c) => { const v1 = [a[0] - b[0], a[1] - b[1]], v2 = [c[0] - b[0], c[1] - b[1]]; const d = Math.hypot(...v1) * Math.hypot(...v2); return d ? Math.acos(Math.max(-1, Math.min(1, (v1[0] * v2[0] + v1[1] * v2[1]) / d))) * 180 / Math.PI : null; };
@@ -145,18 +147,44 @@ function fitMap(fr, W, H, pad = 0.12, flip = 1) { // fit an avatar frame (torso 
   const s = Math.min(W * (1 - 2 * pad) / Math.max(.5, x1 - x0), H * (1 - 2 * pad) / Math.max(.5, y1 - y0));
   return p => [W / 2 + (p[0] * flip - (x0 + x1) / 2) * s, H / 2 + (p[1] - (y0 + y1) / 2) * s];
 }
-function drawIdeal(step) {
-  const cv = $('#idealCv'), c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height);
-  const f = lastFrame && lastFrame.facing ? lastFrame.facing : 1;
-  drawStick(c, step.frame.map(p => [p[0], p[1], 1]), fitMap(step.frame, cv.width, cv.height, .1, f), '#fff', 5);
+const ease = x => x <= 0 ? 0 : x >= 1 ? 1 : x * x * (3 - 2 * x);
+const lerpFr = (a, b, k) => a ? b.map((p, j) => [a[j][0] + (p[0] - a[j][0]) * k, a[j][1] + (p[1] - a[j][1]) * k]) : b;
+// eased ideal pose for the current step (0.6 s blend from the previous step's pose)
+function ghostPose() { const k = ease((performance.now() / 1000 - GH.t0) / 0.6); return lerpFr(GH.from, GH.to, k); }
+function drawIdeal() {
+  const cv = $('#idealCv'), c = cv.getContext('2d'); c.clearRect(0, 0, cv.width, cv.height); if (!GH.to) return;
+  // one fit for every step of this stroke (no zoom jumps between steps)
+  if (!IFIT) { const all = steps.flatMap(s => s.frame); IFIT = fitMap(all, cv.width, cv.height, .08, 1); }
+  const f = FACE.v, m = p => { const q = IFIT(p); return [f < 0 ? cv.width - q[0] : q[0], q[1]]; };
+  drawStick(c, ghostPose().map(p => [p[0], p[1], 1]), m, '#fff', 5);
 }
+function idealLoop() { if (!running) return; drawIdeal(); requestAnimationFrame(idealLoop); }
+// fit the camera box to the camera's own shape, never taller than the screen allows
+function fitStage() {
+  const v = $('#video'), st = $('#stage'); if (!v.videoWidth) return; const ar = v.videoWidth / v.videoHeight;
+  const land = innerHeight < 520 && innerWidth > innerHeight, maxH = land ? innerHeight - 16 : innerHeight * (innerWidth <= 760 ? 0.62 : 0.78);
+  const avail = st.parentElement.clientWidth || innerWidth; const w = Math.min(avail, maxH * ar);
+  st.style.aspectRatio = v.videoWidth + ' / ' + v.videoHeight; st.style.width = Math.round(w) + 'px';
+}
+addEventListener('resize', fitStage);
 // avatar frame -> your pixels: hip-mid anchor, scaled to your height, facing your way, placed beside you
+// anchor (hips x, feet y) is damped so the white figure glides with you instead of shaking
 function ghostToYou(fr, kp, facing) {
   const H0 = ghostH(TECH.shots[$('#shot').value].frames[0]), s = (Hpx || 300) / H0, hip = mid(kp[11], kp[12]), dx = -facing * 0.45 * (Hpx || 300);
   const g = fr[11] && fr[12] ? [(fr[11][0] + fr[12][0]) / 2, (fr[11][1] + fr[12][1]) / 2] : [0, 0];
   const footY = Math.max(kp[15][1], kp[16][1]), gFoot = Math.max(fr[15][1], fr[16][1]);
-  return fr.map(p => [hip[0] + dx + (p[0] - g[0]) * s * facing, footY + (p[1] - gFoot) * s, 1]);
+  const tx = hip[0] + dx, ty = footY;
+  if (!ANC || Math.hypot(tx - ANC[0], ty - ANC[1]) > 0.8 * (Hpx || 300)) ANC = [tx, ty]; else { ANC[0] += (tx - ANC[0]) * 0.12; ANC[1] += (ty - ANC[1]) * 0.12; }
+  return fr.map(p => [ANC[0] + (p[0] - g[0]) * s * facing, ANC[1] + (p[1] - gFoot) * s, 1]);
 }
+// your skeleton for drawing: light smoothing, more when a joint is unsure; raw keypoints still drive the checks
+function smoothKp(kp, H) {
+  if (!SM) { SM = kp.map(p => p.slice()); return SM; }
+  SM = kp.map((p, j) => { const q = SM[j], d = Math.hypot(p[0] - q[0], p[1] - q[1]) / (H || 300), a = Math.min(1, (0.25 + d * 6) * (p[2] > .5 ? 1 : 0.5)); return [q[0] + (p[0] - q[0]) * a, q[1] + (p[1] - q[1]) * a, p[2]]; });
+  return SM;
+}
+// side-facing flips only after 12 frames in a row agree (stops the white figure jumping sides)
+function stableFacing(f) { if (f === FACE.v) FACE.n = 0; else if (++FACE.n >= 12) { FACE.v = f; FACE.n = 0; ANC = null; } return FACE.v; }
 
 // ---------- flow ----------
 const say = t => { if ($('#voice').value !== '1' || !window.speechSynthesis) return; try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(t); u.rate = 1.02; speechSynthesis.speak(u); } catch (e) {} };
@@ -165,7 +193,7 @@ function beginStep(i) {
   si = i; const s = steps[i]; phase = 'pose'; phaseT = performance.now() / 1000; buf = []; holdT = null;
   $('#result').classList.remove('on'); $('#stepTitle').textContent = `Step ${i + 1} of ${steps.length}: ${s.label}`; $('#cue').textContent = s.cue;
   $('#cueSub').textContent = i === 0 ? 'Stand side-on, whole body in view. This step also measures your height in the picture.' : 'Move into this position slowly, then hold still.';
-  drawIdeal(s); renderDots(); say(`Step ${i + 1}. ${s.label}. ${s.cue}. Then hold still.`);
+  GH = { from: GH.to ? ghostPose() : null, to: s.frame, t0: performance.now() / 1000 }; renderDots(); say(`Step ${i + 1}. ${s.label}. ${s.cue}. Then hold still.`);
 }
 function median(a) { const b = a.slice().sort((x, y) => x - y); return b[b.length >> 1]; }
 function capture(forced) {
@@ -227,30 +255,30 @@ function finishAll() {
 // ---------- camera loop ----------
 function stopCam() { running = false; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; clearInterval(autoNext); }
 async function start() {
-  $('#summary').classList.remove('on'); results = []; Hpx = null;
+  $('#summary').classList.remove('on'); results = []; Hpx = null; SM = null; ANC = null; FACE = { v: 1, n: 0 }; GH = { from: null, to: null, t0: 0 }; IFIT = null;
   steps = buildSteps($('#shot').value);
   engine.configure({ shot: $('#shot').value, handedness: $('#hand').value }); engine.reset();
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: $('#cam').value, width: { ideal: 1280 }, height: { ideal: 720 } } }); }
   catch (e) { $('#setupStatus').textContent = 'Camera not available: ' + (e.message || e) + (window.isSecureContext ? '' : ' (page must be HTTPS)'); return; }
   const v = $('#video'); v.srcObject = stream; await v.play();
   $('#stage').classList.toggle('mirror', $('#cam').value === 'user');
-  $('#setup').hidden = true; $('#live').hidden = false; running = true; scrollTo(0, 0); beginStep(0); loop();
+  $('#setup').hidden = true; $('#live').hidden = false; running = true; fitStage(); scrollTo(0, 0); beginStep(0); loop(); idealLoop();
 }
 async function loop() {
   const v = $('#video'), cv = $('#ov'), c = cv.getContext('2d'); let idx = 0;
   while (running) {
     if (v.readyState < 2) { await new Promise(r => setTimeout(r, 50)); continue; }
-    const w = v.videoWidth, h = v.videoHeight; if (cv.width !== w) { cv.width = w; cv.height = h; }
+    const w = v.videoWidth, h = v.videoHeight; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; fitStage(); }
     const t = performance.now() / 1000, r = await engine.processFrame({ image: v, width: w, height: h, t, index: idx++ });
     if (!running) break;
     c.clearRect(0, 0, w, h);
     const kp = r.skeleton, s = steps[si];
     $('#qual').textContent = r.quality && r.quality.message ? r.quality.message : '';
     if (kp) {
-      const facing = facingOf(kp); lastFrame = { kp, facing };
+      const facing = stableFacing(facingOf(kp)); lastFrame = { kp, facing }; const skp = smoothKp(kp, Hpx);
       if (!Hpx && r.quality.fullBody) Hpx = (Math.max(kp[15][1], kp[16][1]) - kp[0][1]) / 0.88;
-      if (phase === 'pose' || phase === 'hold') drawStick(c, ghostToYou(s.frame, kp, facing), p => p, 'rgba(255,255,255,.75)', Math.max(3, w / 220));
-      drawStick(c, kp, p => p, '#ff9f43', Math.max(3, w / 260));
+      if (phase === 'pose' || phase === 'hold') drawStick(c, ghostToYou(ghostPose(), skp, facing), p => p, 'rgba(255,255,255,.75)', Math.max(3, w / 220));
+      drawStick(c, skp, p => p, '#ff9f43', Math.max(3, w / 260));
       buf.push({ t, kp: kp.map(p => p.slice()) }); while (buf.length && buf[0].t < t - 1.2) buf.shift();
     }
     // hold detection: mean joint motion over 0.5 s below 2.5 % of body height, for 1.2 s
