@@ -177,9 +177,10 @@ async function processLive(t) {
   $('#hPhase').textContent = r.phase ? PH_NAME[r.phase.id] : '-';
   const q = r.quality, fb = $('#fbStat');
   livePanel(r, q);
+  try { window.PadelFeat?.frame(r, t, { gate, band, S, REL }); } catch (e) { console.warn('feat', e); }
   if (fb) { fb.className = q.fullBody && !q.message ? 'ok' : 'bad'; fb.textContent = q.fullBody && !q.message ? 'Full body in frame ✓' : (q.message || 'Step into the frame'); }
   if (L.running) for (const s of r.strokes) {
-    if (q.fullBody) onStroke(s); else { flashCue('Not counted: your whole body (head to feet) must be in the picture'); }
+    if (q.fullBody) { onStroke(s); try { window.PadelFeat?.stroke(s, { gate, band, S, REL }); } catch (e) { console.warn('feat', e); } } else { flashCue('Not counted: your whole body (head to feet) must be in the picture'); }
   }
 }
 
